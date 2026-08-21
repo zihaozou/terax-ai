@@ -109,6 +109,7 @@ git commit -m "feat: remove built-in AI chat module and UI mount points"
 - Move: `src/modules/ai/lib/keyring.ts` → `src/lib/models/keyring.ts`
 - Move: `src/modules/ai/lib/agent.ts` → `src/lib/models/language-model.ts` (already slimmed by the controller to exactly the autocomplete slice — no extraction needed, just move)
 - Move: `src/modules/ai/lib/proxyFetch.ts` → `src/lib/models/proxy-fetch.ts`
+- Restore + move: `src/modules/ai/config.test.ts` (deleted in Task 3 — the kept slice keeps its test coverage; Task 3 review Minor #5) → `src/lib/models/config.test.ts`. Restore it first: `git show 2ac1cf1:src/modules/ai/config.test.ts > src/modules/ai/config.test.ts`
 - After the moves, `src/modules/ai/` must be empty — `git rm` any straggler and remove the directory. After this task `src/modules/ai/` must not exist.
 - Modify (importers): `src/modules/editor/EditorPane.tsx`, `src/modules/editor/lib/autocomplete/provider.ts`, `src/modules/settings/store.ts`, `src/settings/components/ProviderIcon.tsx`, `src/settings/components/ProviderKeyCard.tsx`, `src/settings/sections/ModelsSection.tsx`, `src/modules/source-control/useSourceControlPanel.ts` (if it imports the slice — Task 5 deletes that usage; a temporary redirect is fine)
 
@@ -125,6 +126,8 @@ git mv src/modules/ai/config.ts src/lib/models/config.ts
 git mv src/modules/ai/lib/keyring.ts src/lib/models/keyring.ts
 git mv src/modules/ai/lib/agent.ts src/lib/models/language-model.ts
 git mv src/modules/ai/lib/proxyFetch.ts src/lib/models/proxy-fetch.ts
+git show 2ac1cf1:src/modules/ai/config.test.ts > src/modules/ai/config.test.ts && git add -N src/modules/ai/config.test.ts
+git mv src/modules/ai/config.test.ts src/lib/models/config.test.ts
 ```
 
 Fix internal imports: `language-model.ts` now imports `./config`, `./keyring`, `./proxy-fetch`; `keyring.ts` imports `./config`. (`agent.ts` was already slimmed by the controller — if you find any chat-only exports still in it, STOP and report BLOCKED with specifics.)
