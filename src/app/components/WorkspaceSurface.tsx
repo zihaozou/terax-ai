@@ -1,4 +1,3 @@
-import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
@@ -6,6 +5,7 @@ import { MarkdownStack } from "@/modules/markdown";
 import { PreviewStack } from "@/modules/preview";
 import type { Tab } from "@/modules/tabs";
 import { TerminalStack } from "@/modules/terminal";
+import type { ComponentProps } from "react";
 
 type TerminalStackProps = ComponentProps<typeof TerminalStack>;
 type EditorStackProps = ComponentProps<typeof EditorStack>;
@@ -27,8 +27,8 @@ type Props = {
   onEditorCloseTab: EditorStackProps["onCloseTab"];
   registerPreviewHandle: PreviewStackProps["registerHandle"];
   onPreviewUrlChange: PreviewStackProps["onUrlChange"];
-  onAiDiffAccept: AiDiffStackProps["onAccept"];
-  onAiDiffReject: AiDiffStackProps["onReject"];
+  onAiDiffAccept?: AiDiffStackProps["onAccept"];
+  onAiDiffReject?: AiDiffStackProps["onReject"];
   onOpenCommitFile: GitHistoryStackProps["onOpenCommitFile"];
   onGitHistorySearchHandle: GitHistoryStackProps["onSearchHandle"];
   onSetMarkdownView: EditorStackProps["onSetMarkdownView"];
@@ -127,17 +127,19 @@ export function WorkspaceSurface({
           onSetMarkdownView={onSetMarkdownView}
         />
       </div>
-      <div
-        className={cn(LAYER, !isAiDiffTab && "invisible pointer-events-none")}
-        aria-hidden={!isAiDiffTab}
-      >
-        <AiDiffStack
-          tabs={tabs}
-          activeId={activeId}
-          onAccept={onAiDiffAccept}
-          onReject={onAiDiffReject}
-        />
-      </div>
+      {onAiDiffAccept && onAiDiffReject ? (
+        <div
+          className={cn(LAYER, !isAiDiffTab && "invisible pointer-events-none")}
+          aria-hidden={!isAiDiffTab}
+        >
+          <AiDiffStack
+            tabs={tabs}
+            activeId={activeId}
+            onAccept={onAiDiffAccept}
+            onReject={onAiDiffReject}
+          />
+        </div>
+      ) : null}
       <div
         className={cn(LAYER, !isGitDiffTab && "invisible pointer-events-none")}
         aria-hidden={!isGitDiffTab}

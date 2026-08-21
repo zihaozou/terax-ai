@@ -1,16 +1,9 @@
 import { cn } from "@/lib/utils";
-import { AiInputBarConnect } from "@/modules/ai";
-import { Chip } from "@/modules/ai/components/Chip";
-import { ChipsRow } from "@/modules/ai/components/ChipsRow";
-import { useComposer } from "@/modules/ai/lib/composer";
 import { useBlockController } from "@/modules/terminal/lib/blockController";
-import { focusLeafInput } from "@/modules/terminal/lib/useTerminalSession";
 import {
-  AiContentGenerator02Icon,
   CommandLineIcon,
   Folder01Icon,
   GitBranchIcon,
-  TerminalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -19,13 +12,36 @@ import { useGitBranch } from "./useGitBranch";
 import { useSystemInfo } from "./useSystemInfo";
 
 const ShellInput = lazy(() => import("@/modules/terminal/block/ShellInput"));
-const AiComposerInput = lazy(() =>
-  import("@/modules/ai/components/AiComposerInput").then((m) => ({
-    default: m.AiComposerInput,
-  })),
-);
 
-export const TOGGLE_BLOCK_INPUT_EVENT = "terax:toggle-block-input";
+type ChipProps = {
+  tone: "neutral" | "blue" | "violet" | "emerald";
+  icon?: typeof CommandLineIcon;
+  iconNode?: React.ReactNode;
+  title?: string;
+  children?: React.ReactNode;
+};
+
+function Chip({ tone, icon, iconNode, title, children }: ChipProps) {
+  const toneClasses = {
+    neutral: "bg-muted text-muted-foreground",
+    blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    violet: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium",
+        toneClasses[tone],
+      )}
+      title={title}
+    >
+      {iconNode ??
+        (icon && <HugeiconsIcon icon={icon} size={11} strokeWidth={1.75} />)}
+      {children}
+    </span>
+  );
+}
 
 type Props = {
   isBlockTab: boolean;
@@ -33,10 +49,6 @@ type Props = {
   activeLeafId: number | null;
   cwd: string | null;
   home: string | null;
-  hasComposer: boolean;
-  panelOpen: boolean;
-  keysLoaded: boolean;
-  onConnect: () => void;
 };
 
 export function WorkspaceInputBar({
@@ -45,12 +57,7 @@ export function WorkspaceInputBar({
   activeLeafId,
   cwd,
   home,
-  hasComposer,
-  panelOpen,
-  keysLoaded,
-  onConnect,
 }: Props) {
-  const c = useComposer();
   const { os, shell } = useSystemInfo();
 
   const controller = useBlockController(isBlockTab ? activeLeafId : null);
@@ -67,40 +74,7 @@ export function WorkspaceInputBar({
   }, [blockMode]);
   const branch = useGitBranch(isTerminalTab ? cwd : null, promptNonce);
 
-  const showToggle = isBlockTab && hasComposer;
-  const [mode, setMode] = useState<"shell" | "ai">("shell");
-  const effectiveMode = !isBlockTab ? "ai" : hasComposer ? mode : "shell";
-
-  const mounted = keysLoaded || isBlockTab;
-  const open = isBlockTab || (keysLoaded && panelOpen);
-
-  const [aiLoaded, setAiLoaded] = useState(false);
-  useEffect(() => {
-    if (open && effectiveMode === "ai") setAiLoaded(true);
-  }, [open, effectiveMode]);
-  const renderAi = hasComposer && aiLoaded;
-
-  const switchMode = (next: "shell" | "ai") => {
-    setMode(next);
-    requestAnimationFrame(() => {
-      if (next === "ai") c.textareaRef.current?.focus();
-      else if (activeLeafId != null) focusLeafInput(activeLeafId);
-    });
-  };
-
-  const modeRef = useRef(mode);
-  modeRef.current = mode;
-  const switchModeRef = useRef(switchMode);
-  switchModeRef.current = switchMode;
-  useEffect(() => {
-    if (!showToggle) return;
-    const onToggle = () =>
-      switchModeRef.current(modeRef.current === "shell" ? "ai" : "shell");
-    window.addEventListener(TOGGLE_BLOCK_INPUT_EVENT, onToggle);
-    return () => window.removeEventListener(TOGGLE_BLOCK_INPUT_EVENT, onToggle);
-  }, [showToggle]);
-
-  if (!mounted) return null;
+  if (!isBlockTab) return null;
 
   const terminalChips = isTerminalTab ? (
     <>
@@ -123,131 +97,32 @@ export function WorkspaceInputBar({
     </>
   ) : null;
 
-  const content =
-    !hasComposer && !isBlockTab ? (
-      <AiInputBarConnect onAdd={onConnect} />
-    ) : (
+  return (
+    <div data-ai-input-bar data-state="open" className="terax-reveal">
       <div className="shrink-0 border-t border-border/60 bg-foreground/[0.02] px-3 py-2">
         <div className="flex flex-col gap-2 rounded-lg px-1 py-1">
-          <ChipsRow
-            leading={terminalChips}
-            files={c.files}
-            onRemoveFile={c.removeFile}
-            snippets={c.pickedSnippets}
-            onRemoveSnippet={(id) => {
-              const snip = c.pickedSnippets.find((s) => s.id === id);
-              c.removeSnippet(id);
-              if (!snip) return;
-              const re = new RegExp(`(^|\\s)#${snip.handle}\\b ?`);
-              c.setValue((v) => v.replace(re, (_m, lead: string) => lead));
-            }}
-            commands={c.pickedCommands}
-            onRemoveCommand={(name) => c.removeCommand(name)}
-          />
-
+          <div className="flex flex-wrap items-center gap-1.5">
+            {terminalChips}
+          </div>
           <div className="flex items-end gap-2.5">
             <div className="relative min-w-0 flex-1">
               {isBlockTab && controller && activeLeafId != null && (
-                <div className={cn(effectiveMode !== "shell" && "hidden")}>
-                  <Suspense fallback={null}>
-                    <ShellInput
-                      leafId={activeLeafId}
-                      mode={blockMode}
-                      focused={effectiveMode === "shell"}
-                      onSubmit={controller.submitCommand}
-                      onInterrupt={controller.interrupt}
-                      getCwd={controller.getCwd}
-                    />
-                  </Suspense>
-                </div>
-              )}
-              {renderAi && (
-                <div className={cn(effectiveMode !== "ai" && "hidden")}>
-                  <Suspense fallback={null}>
-                    <AiComposerInput />
-                  </Suspense>
-                </div>
+                <Suspense fallback={null}>
+                  <ShellInput
+                    leafId={activeLeafId}
+                    mode={blockMode}
+                    focused={true}
+                    onSubmit={controller.submitCommand}
+                    onInterrupt={controller.interrupt}
+                    getCwd={controller.getCwd}
+                  />
+                </Suspense>
               )}
             </div>
-            {showToggle && (
-              <div className="shrink-0 pb-px">
-                <ModeToggle mode={mode} onChange={switchMode} />
-              </div>
-            )}
           </div>
         </div>
       </div>
-    );
-
-  return (
-    <div
-      data-ai-input-bar
-      data-state={open ? "open" : "closed"}
-      className="terax-reveal"
-      aria-hidden={!open}
-    >
-      <div>{content}</div>
     </div>
-  );
-}
-
-function ModeToggle({
-  mode,
-  onChange,
-}: {
-  mode: "shell" | "ai";
-  onChange: (next: "shell" | "ai") => void;
-}) {
-  return (
-    <div className="relative grid shrink-0 grid-cols-2 rounded-md p-0.5 text-[10.5px] ring-1 ring-inset ring-border/35">
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[4px] bg-accent/60 transition-transform duration-200 ease-out"
-        style={{
-          transform: mode === "ai" ? "translateX(100%)" : "translateX(0)",
-        }}
-      />
-      <SegButton
-        active={mode === "shell"}
-        icon={TerminalIcon}
-        label="Shell"
-        onClick={() => onChange("shell")}
-      />
-      <SegButton
-        active={mode === "ai"}
-        icon={AiContentGenerator02Icon}
-        label="AI"
-        onClick={() => onChange("ai")}
-      />
-    </div>
-  );
-}
-
-function SegButton({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: typeof AiContentGenerator02Icon;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "relative z-10 flex items-center justify-center gap-1 rounded-[4px] px-2 py-[2.5px] font-medium transition-colors",
-        active
-          ? "text-foreground/90"
-          : "text-muted-foreground/70 hover:text-foreground",
-      )}
-    >
-      <HugeiconsIcon icon={icon} size={11} strokeWidth={1.75} />
-      {label}
-    </button>
   );
 }
 

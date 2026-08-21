@@ -29,7 +29,6 @@ export type ShortcutId =
   | "pane.swapDown"
   | "pane.source"
   | "terminal.clear"
-  | "terminal.toggleInput"
   | "blocks.prev"
   | "blocks.next"
   | "search.focus"
@@ -40,9 +39,6 @@ export type ShortcutId =
   | "view.zoomOut"
   | "view.zoomReset"
   | "view.zenMode"
-  | "ai.toggle"
-  | "ai.toggleMini"
-  | "ai.askSelection"
   | "agent.focusAttention"
   | "settings.open"
   | "sidebar.toggle"
@@ -58,7 +54,6 @@ export type ShortcutGroup =
   | "Panes"
   | "Terminal"
   | "Search"
-  | "AI"
   | "View"
   | "Editor";
 
@@ -198,12 +193,6 @@ export const SHORTCUTS: Shortcut[] = [
     defaultBindings: IS_MAC ? [{ meta: true, key: "k" }] : [],
   },
   {
-    id: "terminal.toggleInput",
-    label: "Toggle Shell / AI input",
-    group: "Terminal",
-    defaultBindings: [{ [MOD_PROP]: true, key: "u" }],
-  },
-  {
     id: "blocks.prev",
     label: "Previous command block",
     group: "Terminal",
@@ -268,29 +257,9 @@ export const SHORTCUTS: Shortcut[] = [
     defaultBindings: [{ [MOD_PROP]: true, key: "f" }],
   },
   {
-    id: "ai.toggle",
-    label: "Toggle AI agent",
-    group: "AI",
-    defaultBindings: [{ [MOD_PROP]: true, key: "i" }],
-  },
-  {
-    id: "ai.toggleMini",
-    label: "Toggle AI chat window",
-    group: "AI",
-    defaultBindings: [{ [MOD_PROP]: true, shift: true, key: "i" }],
-  },
-  {
-    id: "ai.askSelection",
-    label: "Ask AI about selection",
-    group: "AI",
-    // Keep Mod+L available to the shell for clear-screen, including when
-    // terminal text is selected and this shortcut is otherwise eligible.
-    defaultBindings: [{ [MOD_PROP]: true, key: "j" }],
-  },
-  {
     id: "agent.focusAttention",
     label: "Jump to agent needing attention",
-    group: "AI",
+    group: "View",
     defaultBindings: [{ [MOD_PROP]: true, shift: true, key: "a" }],
   },
   {
@@ -389,7 +358,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   "Terminal",
   "View",
   "Search",
-  "AI",
   "Editor",
 ];
 
@@ -422,7 +390,7 @@ function keyFromCode(code: string): string | null {
 export function matchBinding(
   e: KeyboardEvent,
   binding: KeyBinding,
-  id?: ShortcutId
+  id?: ShortcutId,
 ): boolean {
   const eventKey = e.key.toLowerCase();
   const bindingKey = binding.key.toLowerCase();
@@ -436,10 +404,10 @@ export function matchBinding(
   }
 
   return (
-    !!e.ctrlKey === !!binding.ctrl &&
-    !!e.shiftKey === !!binding.shift &&
-    !!e.altKey === !!binding.alt &&
-    !!e.metaKey === !!binding.meta
+    Boolean(e.ctrlKey) === Boolean(binding.ctrl) &&
+    Boolean(e.shiftKey) === Boolean(binding.shift) &&
+    Boolean(e.altKey) === Boolean(binding.alt) &&
+    Boolean(e.metaKey) === Boolean(binding.meta)
   );
 }
 

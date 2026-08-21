@@ -3,7 +3,6 @@ import { hasLeaf, leafIdForPty } from "@/modules/terminal";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
 import { displayAgent } from "../lib/format";
-import { maybeTriggerManagedReview } from "../lib/review";
 import { routeAgentNotification } from "../lib/route";
 import type { AgentSession, AgentSignal } from "../lib/types";
 import { useWindowFocus } from "../lib/useWindowFocus";
@@ -81,7 +80,6 @@ function handleSignal(sig: AgentSignal, ctx: Ctx): void {
       store.setStatus(leafId, "waiting");
       const session = store.sessions[leafId];
       if (session) route(session, "finished", ctx);
-      maybeTriggerManagedReview(leafId);
       return;
     }
     case "exited":

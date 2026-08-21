@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CustomEndpoint,
   getProvider,
   KEYRING_SERVICE,
   PROVIDERS,
-  providerSupportsKey,
-  type CustomEndpoint,
   type ProviderId,
+  providerSupportsKey,
 } from "../config";
 
 export type ProviderKeys = Record<ProviderId, string | null>;
@@ -130,7 +130,9 @@ export async function clearCustomEndpointKey(
       service: KEYRING_SERVICE,
       account: compatKeyringAccount(endpointId),
     });
-  } catch {}
+  } catch {
+    // Deleting a key that was never stored is not an error.
+  }
 }
 
 export async function getAllCustomEndpointKeys(
