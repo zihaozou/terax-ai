@@ -37,14 +37,14 @@
 
 ---
 
-Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE），基于 Tauri 2 + Rust 和 React 19 构建。它内置原生 PTY 后端与 WebGL 渲染器、使用你自己的密钥或完全本地模型运行的智能体 AI 侧边栏，以及代码编辑器、文件浏览器、带 Git 图的源代码管理和网页预览面板。磁盘占用约 7-8 MB。无遥测。无需账户。
+Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE），基于 Tauri 2 + Rust 和 React 19 构建。它内置原生 PTY 后端与 WebGL 渲染器、对终端编码智能体（Claude Code、pi、Codex 等）的一流集成、编辑器内联 AI 自动补全，以及文件浏览器、带 Git 图的源代码管理和网页预览面板。磁盘占用约 7-8 MB。无遥测。无需账户。
 
 ## 截图
 
 <table>
   <tr>
     <td align="center"><img src="../web-preview.png" alt="网页预览" /><br/><sub>本地开发服务器网页预览</sub></td>
-    <td align="center"><img src="../ai-workflow.png" alt="AI 窗口" /><br/><sub>在代码编辑器中显示编辑差异的智能体 AI 工作流</sub></td>
+    <td align="center"><img src="../editor.png" alt="代码编辑器" /><br/><sub>带内联 AI 自动补全的代码编辑器</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="../themes.png" alt="主题和背景图" style="margin-top: 12px;"/><br/><sub>自定义主题、预设和背景图</sub></td>
@@ -72,7 +72,6 @@ Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 
 - CodeMirror 6（支持所有常用语言，包括 TS/JS、Rust、Python、Go、C/C++、Java、HTML/CSS、JSON、Markdown 等）
 - 支持本地模型的内联 AI 自动补全
-- AI 编辑差异，可逐块接受或拒绝
 - 可选语言服务器支持，提供诊断、导航、补全、格式化和自定义服务器
 - 渲染 Markdown，并可查看图片、视频、音频和 PDF
 - Vim 模式
@@ -90,7 +89,6 @@ Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 - Catppuccin 图标主题
 - 模糊搜索、键盘导航、内联重命名和上下文操作
 - 磁盘文件变更时实时更新
-- 将文件和选区直接附加到 AI 侧边栏
 
 ### 网页预览
 
@@ -106,13 +104,10 @@ Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 
 ### AI
 
+- **内联自动补全：** 在编辑器中通过你自己的提供商密钥或完全本地模型获得代码补全
 - **自带密钥提供商：** OpenAI、Anthropic、Google（Gemini）、Groq、xAI（Grok）、Cerebras、OpenRouter、DeepSeek、Mistral，以及任意兼容 OpenAI 的端点
 - **本地 / 离线：** LM Studio、MLX、Ollama
-- **智能体工作流：** 计划、子智能体、通过 `TERAX.md` 实现的项目记忆、文件读取 / 写入 / 编辑 / 多处编辑 / grep / glob、需要批准的 bash、后台进程
-- **编码智能体编排：** 在终端中启动 Claude Code、检查其输出，并通过需要批准的工具发送后续工作
-- **输入区：** 通过 `#handle` 使用提示片段、通过 `@path` 添加文件、语音输入，以及从文件浏览器或选区附加到智能体
-- **自定义智能体**，拥有各自的系统提示和工具子集
-- **计划模式**，在执行前生成计划并请求确认
+- **编码智能体集成：** Terax 通过 OSC 转义序列检测终端中的编码智能体（Claude Code、pi、Codex 等 CLI 智能体），在通知铃铛中显示其状态，可用 ⇧⌘A 跳转到需要注意的智能体，并可从新标签页菜单启动它们
 
 ## 安装
 
@@ -129,9 +124,9 @@ Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 - **NixOS / Nix：** 使用官方 flake。非 NixOS 运行 `nix profile install github:crynta/terax-ai`；NixOS 可导入 flake，并将 `inputs.terax.packages.${pkgs.system}.terax` 添加到 `environment.systemPackages`。也可以使用 `nixosModules.terax` 输出进行更简单的配置。
 - **AppImage：** 需要 FUSE。没有 FUSE 时运行 `./Terax_*.AppImage --appimage-extract-and-run`。如果在 Wayland 上出现渲染问题，请尝试 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。否则，`.deb` / `.rpm` 包会链接系统 GTK 栈，通常更流畅。
 
-## 配置 AI
+## 配置 AI 自动补全
 
-1. 打开**设置 -> AI**。
+1. 打开**设置 -> 模型**。
 2. 选择提供商并粘贴 API 密钥。对于本地推理，将 Terax 指向你的 LM Studio / MLX / Ollama 端点。
 3. 密钥通过 `keyring` 写入操作系统钥匙串。密钥绝不会写入磁盘或 localStorage。
 
@@ -139,9 +134,9 @@ Terax 是一个轻量、开源、终端优先的 AI 原生开发环境（ADE）�
 
 **前置要求**
 
-- Rust（stable），https://rustup.rs
+- Rust（stable），<https://rustup.rs>
 - Node 20+ 和 [pnpm](https://pnpm.io)
-- 适用于你平台的 Tauri 前置要求，https://tauri.app/start/prerequisites/
+- 适用于你平台的 Tauri 前置要求，<https://tauri.app/start/prerequisites/>
 
 **运行**
 

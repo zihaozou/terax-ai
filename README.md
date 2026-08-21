@@ -36,14 +36,14 @@
 
 ---
 
-Terax is a lightweight open-source terminal-first AI-native development environment (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, an agentic AI side-panel that runs against your own keys or fully local models, plus a code editor, file explorer, source control with a git graph, and a web preview pane built in. About 7-8 MB on disk. No telemetry. No account.
+Terax is a lightweight open-source terminal-first AI-native development environment (ADE) built on Tauri 2 + Rust and React 19. A native PTY backend with a WebGL renderer, first-class integration for terminal coding agents (Claude Code, pi, Codex, and friends), inline AI autocomplete in the editor, plus a file explorer, source control with a git graph, and a web preview pane built in. About 7-8 MB on disk. No telemetry. No account.
 
 ## Screenshots
 
 <table>
   <tr>
     <td align="center"><img src="docs/web-preview.png" alt="Web preview" /><br/><sub>Web preview of local dev servers</sub></td>
-    <td align="center"><img src="docs/ai-workflow.png" alt="AI window" /><br/><sub>Agentic AI workflow with edit diffs in the code editor</sub></td>
+    <td align="center"><img src="docs/editor.png" alt="Code editor" /><br/><sub>Code editor with inline AI autocomplete</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/themes.png" alt="Themes and background image" style="margin-top: 12px;"/><br/><sub>Custom themes, presets, and background images</sub></td>
@@ -71,7 +71,6 @@ Terax is a lightweight open-source terminal-first AI-native development environm
 
 - CodeMirror 6 (supports all popular languages - TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON, Markdown, etc.)
 - Inline AI autocomplete with local model support
-- AI edit diffs, accept or reject hunk by hunk
 - Opt-in language server support with diagnostics, navigation, completion, formatting, and custom servers
 - Rendered Markdown plus image, video, audio, and PDF viewing
 - Vim mode
@@ -89,7 +88,6 @@ Terax is a lightweight open-source terminal-first AI-native development environm
 - Catppuccin icon theme
 - Fuzzy search, keyboard navigation, inline rename, context actions
 - Live updates when files change on disk
-- Attach files and selections directly to the AI side-panel
 
 ### Web preview
 
@@ -105,13 +103,10 @@ Terax is a lightweight open-source terminal-first AI-native development environm
 
 ### AI
 
+- **Inline autocomplete:** code completions in the editor from your own provider keys or fully local models
 - **BYOK providers:** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral, plus any OpenAI-compatible endpoint
 - **Local / offline:** LM Studio, MLX, Ollama
-- **Agentic workflow:** plans, sub-agents, project memory via `TERAX.md`, file read / write / edit / multi-edit / grep / glob, bash with approval gating, background processes
-- **Coding-agent orchestration:** spawn Claude Code in a terminal, inspect its output, and send follow-up work through approval-gated tools
-- **Composer:** prompt snippets via `#handle`, files via `@path`, voice input, attach-to-agent from explorer or selection
-- **Custom agents** with their own system prompt and tool subset
-- **Plan mode** for multi-step work, generates and confirms before doing
+- **Coding-agent integration:** Terax detects terminal coding agents (Claude Code, pi, Codex, and other CLI agents) via OSC escape sequences, surfaces their status in the notification bell, jumps to the agent needing attention with ⇧⌘A, and can launch them from the new-tab menu
 
 ## Install
 
@@ -128,20 +123,22 @@ Latest installers are on the [Releases](https://github.com/crynta/terax-ai/relea
 - **NixOS / Nix**: use the official flake - `nix profile install github:crynta/terax-ai` (non-NixOS), or import the flake and add `inputs.terax.packages.${pkgs.system}.terax` to `environment.systemPackages` (NixOS). The `nixosModules.terax` output is also available for a simpler setup.
 - **AppImage:** needs FUSE. Without it: `./Terax_*.AppImage --appimage-extract-and-run`. On Wayland with rendering glitches, try `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Otherwise the `.deb` / `.rpm` packages link against the system GTK stack and tend to be smoother.
 
-## Configure AI
+## Configure AI autocomplete
 
-1. Open **Settings -> AI**.
+1. Open **Settings -> Models**.
 2. Pick a provider and paste your API key. For local inference, point Terax at your LM Studio / MLX / Ollama endpoint.
 3. Keys are written to the OS keychain via `keyring`. They never touch disk or localStorage.
 
 ## Build from source
 
 **Prerequisites**
-- Rust (stable), https://rustup.rs
+
+- Rust (stable), <https://rustup.rs>
 - Node 20+ and [pnpm](https://pnpm.io)
-- Tauri prerequisites for your platform, https://tauri.app/start/prerequisites/
+- Tauri prerequisites for your platform, <https://tauri.app/start/prerequisites/>
 
 **Run**
+
 ```bash
 pnpm install
 pnpm tauri dev          # development
@@ -149,6 +146,7 @@ pnpm tauri build        # production bundle
 ```
 
 **Checks**
+
 ```bash
 pnpm lint
 pnpm check-types

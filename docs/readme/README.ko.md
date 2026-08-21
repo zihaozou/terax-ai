@@ -19,12 +19,12 @@
 
 ---
 
-Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터미널 중심인 AI 네이티브 개발 환경(ADE)입니다. WebGL 렌더러를 갖춘 네이티브 PTY 백엔드, 사용자의 키나 완전한 로컬 모델로 실행되는 에이전트형 AI 사이드 패널, 코드 편집기, 파일 탐색기, Git 그래프를 포함한 소스 제어, 웹 미리보기 패널이 내장되어 있습니다. 디스크 사용량은 약 7-8 MB입니다. 원격 측정 없음. 계정 필요 없음.
+Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터미널 중심인 AI 네이티브 개발 환경(ADE)입니다. WebGL 렌더러를 갖춘 네이티브 PTY 백엔드, 터미널 코딩 에이전트(Claude Code, pi, Codex 등)를 위한 일급 통합, 편집기 내 인라인 AI 자동 완성, 파일 탐색기, Git 그래프를 포함한 소스 제어, 웹 미리보기 패널이 내장되어 있습니다. 디스크 사용량은 약 7-8 MB입니다. 원격 측정 없음. 계정 필요 없음.
 
 ## 스크린샷
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="웹 미리보기" /><br/><sub>로컬 개발 서버의 웹 미리보기</sub></td><td align="center"><img src="../ai-workflow.png" alt="AI 창" /><br/><sub>코드 편집기에서 편집 차이를 보여 주는 에이전트형 AI 워크플로</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="웹 미리보기" /><br/><sub>로컬 개발 서버의 웹 미리보기</sub></td><td align="center"><img src="../editor.png" alt="코드 편집기" /><br/><sub>인라인 AI 자동 완성을 갖춘 코드 편집기</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="테마와 배경 이미지" style="margin-top: 12px;"/><br/><sub>사용자 지정 테마, 프리셋, 배경 이미지</sub></td><td align="center"><img src="../source-control.png" alt="소스 제어와 Git 그래프" style="margin-top: 12px;"/><br/><sub>히스토리에 Git 그래프가 포함된 소스 제어 패널</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="터미널" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>편집기형 입력 패널을 갖춘 블록 기반 WebGL 터미널</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터�
 
 - CodeMirror 6(TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON, Markdown 등 주요 언어 지원)
 - 로컬 모델을 지원하는 인라인 AI 자동 완성
-- AI 편집 차이를 헝크별로 수락하거나 거부
 - 진단, 탐색, 완성, 포매팅, 사용자 지정 서버를 제공하는 선택형 언어 서버
 - Markdown 렌더링과 이미지, 비디오, 오디오, PDF 보기
 - Vim 모드
@@ -64,7 +63,6 @@ Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터�
 - Catppuccin 아이콘 테마
 - 퍼지 검색, 키보드 탐색, 인라인 이름 변경, 컨텍스트 작업
 - 디스크에서 파일이 바뀌면 실시간 업데이트
-- 파일과 선택 항목을 AI 사이드 패널에 직접 첨부
 
 ### 웹 미리보기
 
@@ -80,13 +78,10 @@ Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터�
 
 ### AI
 
+- **인라인 자동 완성:** 사용자의 제공자 키 또는 완전한 로컬 모델로 편집기에서 코드 완성 제공
 - **BYOK 제공자:** OpenAI, Anthropic, Google(Gemini), Groq, xAI(Grok), Cerebras, OpenRouter, DeepSeek, Mistral 및 모든 OpenAI 호환 엔드포인트
 - **로컬 / 오프라인:** LM Studio, MLX, Ollama
-- **에이전트형 워크플로:** 계획, 하위 에이전트, `TERAX.md`를 통한 프로젝트 메모리, 파일 읽기 / 쓰기 / 편집 / 다중 편집 / grep / glob, 승인형 bash, 백그라운드 프로세스
-- **코딩 에이전트 오케스트레이션:** 터미널에서 Claude Code를 실행하고 출력을 확인한 뒤 승인형 도구로 후속 작업 전송
-- **작성기:** `#handle` 프롬프트 스니펫, `@path` 파일, 음성 입력, 탐색기나 선택 항목에서 에이전트로 첨부
-- 자체 시스템 프롬프트와 도구 하위 집합을 가진 **사용자 지정 에이전트**
-- 실행 전에 계획을 만들고 확인하는 **계획 모드**
+- **코딩 에이전트 통합:** Terax는 OSC 이스케이프 시퀀스로 터미널 코딩 에이전트(Claude Code, pi, Codex 등 CLI 에이전트)를 감지하고, 알림 벨에 상태를 표시하며, ⇧⌘A로 주의가 필요한 에이전트로 이동하고, 새 탭 메뉴에서 실행할 수 있습니다
 
 ## 설치
 
@@ -103,9 +98,9 @@ Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터�
 - **NixOS / Nix:** 공식 flake를 사용하세요. NixOS 외부에서는 `nix profile install github:crynta/terax-ai`를 실행합니다. NixOS에서는 flake를 가져오고 `inputs.terax.packages.${pkgs.system}.terax`를 `environment.systemPackages`에 추가합니다. 더 간단한 설정에는 `nixosModules.terax`도 있습니다.
 - **AppImage:** FUSE가 필요합니다. 없다면 `./Terax_*.AppImage --appimage-extract-and-run`을 실행하세요. Wayland 렌더링 문제가 있으면 `WEBKIT_DISABLE_DMABUF_RENDERER=1`을 시도하세요. `.deb` / `.rpm` 패키지는 시스템 GTK 스택을 사용해 보통 더 부드럽습니다.
 
-## AI 설정
+## AI 자동 완성 설정
 
-1. **설정 -> AI**를 엽니다.
+1. **설정 -> 모델**을 엽니다.
 2. 제공자를 선택하고 API 키를 붙여 넣습니다. 로컬 추론은 LM Studio / MLX / Ollama 엔드포인트를 지정합니다.
 3. 키는 `keyring`을 통해 OS 키체인에 저장됩니다. 디스크나 localStorage에는 기록되지 않습니다.
 
@@ -113,9 +108,9 @@ Terax는 Tauri 2 + Rust와 React 19로 만든 가볍고 오픈 소스이며 터�
 
 **필수 항목**
 
-- Rust(stable), https://rustup.rs
+- Rust(stable), <https://rustup.rs>
 - Node 20+와 [pnpm](https://pnpm.io)
-- 플랫폼별 Tauri 필수 항목, https://tauri.app/start/prerequisites/
+- 플랫폼별 Tauri 필수 항목, <https://tauri.app/start/prerequisites/>
 
 **실행**
 

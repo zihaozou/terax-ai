@@ -35,14 +35,14 @@
 
 ---
 
-Terax ist eine leichtgewichtige, quelloffene, terminalorientierte und KI-native Entwicklungsumgebung (ADE), die auf Tauri 2 + Rust und React 19 basiert. Sie bietet ein natives PTY-Backend mit WebGL-Renderer, eine agentische KI-Seitenleiste für eigene Schlüssel oder vollständig lokale Modelle sowie einen Code-Editor, Datei-Explorer, Quellcodeverwaltung mit Git-Graph und eine integrierte Webvorschau. Etwa 7-8 MB auf der Festplatte. Keine Telemetrie. Kein Konto.
+Terax ist eine leichtgewichtige, quelloffene, terminalorientierte und KI-native Entwicklungsumgebung (ADE), die auf Tauri 2 + Rust und React 19 basiert. Sie bietet ein natives PTY-Backend mit WebGL-Renderer, erstklassige Integration für Coding-Agenten im Terminal (Claude Code, pi, Codex und ähnliche), Inline-KI-Vervollständigung im Editor sowie Datei-Explorer, Quellcodeverwaltung mit Git-Graph und eine integrierte Webvorschau. Etwa 7-8 MB auf der Festplatte. Keine Telemetrie. Kein Konto.
 
 ## Screenshots
 
 <table>
   <tr>
     <td align="center"><img src="../web-preview.png" alt="Webvorschau" /><br/><sub>Webvorschau lokaler Entwicklungsserver</sub></td>
-    <td align="center"><img src="../ai-workflow.png" alt="KI-Fenster" /><br/><sub>Agentischer KI-Workflow mit Bearbeitungs-Diffs im Code-Editor</sub></td>
+    <td align="center"><img src="../editor.png" alt="Code-Editor" /><br/><sub>Code-Editor mit Inline-KI-Vervollständigung</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="../themes.png" alt="Themes und Hintergrundbild" style="margin-top: 12px;"/><br/><sub>Eigene Themes, Voreinstellungen und Hintergrundbilder</sub></td>
@@ -70,7 +70,6 @@ Terax ist eine leichtgewichtige, quelloffene, terminalorientierte und KI-native 
 
 - CodeMirror 6 (unterstützt alle verbreiteten Sprachen wie TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON, Markdown usw.)
 - Integrierte KI-Vervollständigung mit Unterstützung lokaler Modelle
-- KI-Bearbeitungs-Diffs, abschnittsweise annehmbar oder ablehnbar
 - Optionale Language-Server-Unterstützung mit Diagnosen, Navigation, Vervollständigung, Formatierung und eigenen Servern
 - Gerendertes Markdown sowie Anzeige von Bildern, Videos, Audio und PDF
 - Vim-Modus
@@ -88,7 +87,6 @@ Terax ist eine leichtgewichtige, quelloffene, terminalorientierte und KI-native 
 - Catppuccin-Icon-Theme
 - Unscharfe Suche, Tastaturnavigation, direktes Umbenennen und Kontextaktionen
 - Live-Aktualisierung bei Dateiänderungen auf der Festplatte
-- Dateien und Auswahl direkt an die KI-Seitenleiste anhängen
 
 ### Webvorschau
 
@@ -104,13 +102,10 @@ Terax ist eine leichtgewichtige, quelloffene, terminalorientierte und KI-native 
 
 ### KI
 
+- **Inline-Vervollständigung:** Code-Vorschläge im Editor mit eigenen Anbieter-Schlüsseln oder vollständig lokalen Modellen
 - **Anbieter mit eigenem Schlüssel:** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral sowie jeder OpenAI-kompatible Endpunkt
 - **Lokal / offline:** LM Studio, MLX, Ollama
-- **Agentischer Workflow:** Pläne, Sub-Agenten, Projektgedächtnis über `TERAX.md`, Lesen / Schreiben / Bearbeiten / Mehrfachbearbeitung / grep / glob, Bash mit Freigabe und Hintergrundprozesse
-- **Orchestrierung von Coding-Agenten:** Claude Code in einem Terminal starten, Ausgabe prüfen und Folgeaufgaben über freigabepflichtige Tools senden
-- **Composer:** Prompt-Snippets über `#handle`, Dateien über `@path`, Spracheingabe und Anhängen aus Explorer oder Auswahl
-- **Eigene Agenten** mit eigenem System-Prompt und Tool-Teilsatz
-- **Planungsmodus**, der vor der Ausführung einen Plan erstellt und bestätigen lässt
+- **Coding-Agent-Integration:** Terax erkennt Coding-Agenten im Terminal (Claude Code, pi, Codex und andere CLI-Agenten) über OSC-Escape-Sequenzen, zeigt ihren Status in der Benachrichtigungsglocke, springt mit ⇧⌘A zum Agenten, der Aufmerksamkeit braucht, und kann sie über das Menü für neue Tabs starten
 
 ## Installation
 
@@ -127,9 +122,9 @@ Die neuesten Installationspakete stehen auf der Seite [Releases](https://github.
 - **NixOS / Nix:** Nutze den offiziellen Flake: `nix profile install github:crynta/terax-ai` außerhalb von NixOS. Unter NixOS importierst du den Flake und fügst `inputs.terax.packages.${pkgs.system}.terax` zu `environment.systemPackages` hinzu. Für eine einfachere Einrichtung ist auch `nixosModules.terax` verfügbar.
 - **AppImage:** Benötigt FUSE. Ohne FUSE: `./Terax_*.AppImage --appimage-extract-and-run`. Bei Darstellungsfehlern unter Wayland hilft möglicherweise `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Die `.deb`- / `.rpm`-Pakete binden stattdessen den GTK-Stack des Systems ein und laufen meist flüssiger.
 
-## KI konfigurieren
+## KI-Vervollständigung konfigurieren
 
-1. Öffne **Einstellungen -> KI**.
+1. Öffne **Einstellungen -> Modelle**.
 2. Wähle einen Anbieter und füge deinen API-Schlüssel ein. Für lokale Inferenz verweist du Terax auf deinen LM Studio- / MLX- / Ollama-Endpunkt.
 3. Schlüssel werden über `keyring` im Schlüsselbund des Betriebssystems gespeichert. Sie werden niemals auf die Festplatte oder in localStorage geschrieben.
 
@@ -137,9 +132,9 @@ Die neuesten Installationspakete stehen auf der Seite [Releases](https://github.
 
 **Voraussetzungen**
 
-- Rust (stable), https://rustup.rs
+- Rust (stable), <https://rustup.rs>
 - Node 20+ und [pnpm](https://pnpm.io)
-- Tauri-Voraussetzungen für deine Plattform, https://tauri.app/start/prerequisites/
+- Tauri-Voraussetzungen für deine Plattform, <https://tauri.app/start/prerequisites/>
 
 **Ausführen**
 

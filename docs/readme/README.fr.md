@@ -19,12 +19,12 @@
 
 ---
 
-Terax est un environnement de développement (ADE) léger, open source, axé sur le terminal et natif pour l'IA, construit avec Tauri 2 + Rust et React 19. Il réunit un backend PTY natif avec moteur de rendu WebGL, un panneau latéral d'IA agentique fonctionnant avec vos propres clés ou des modèles entièrement locaux, un éditeur de code, un explorateur de fichiers, une gestion de sources avec graphe Git et un panneau d'aperçu web. Environ 7-8 Mo sur le disque. Aucune télémétrie. Aucun compte.
+Terax est un environnement de développement (ADE) léger, open source, axé sur le terminal et natif pour l'IA, construit avec Tauri 2 + Rust et React 19. Il réunit un backend PTY natif avec moteur de rendu WebGL, une intégration de premier plan pour les agents de programmation en terminal (Claude Code, pi, Codex et autres), l'autocomplétion IA intégrée dans l'éditeur, un explorateur de fichiers, une gestion de sources avec graphe Git et un panneau d'aperçu web. Environ 7-8 Mo sur le disque. Aucune télémétrie. Aucun compte.
 
 ## Captures d'écran
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="Aperçu web" /><br/><sub>Aperçu web des serveurs de développement locaux</sub></td><td align="center"><img src="../ai-workflow.png" alt="Fenêtre IA" /><br/><sub>Flux de travail d'IA agentique avec diffs dans l'éditeur de code</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="Aperçu web" /><br/><sub>Aperçu web des serveurs de développement locaux</sub></td><td align="center"><img src="../editor.png" alt="Éditeur de code" /><br/><sub>Éditeur de code avec autocomplétion IA intégrée</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="Thèmes et image de fond" style="margin-top: 12px;"/><br/><sub>Thèmes personnalisés, préréglages et images de fond</sub></td><td align="center"><img src="../source-control.png" alt="Gestion de sources et graphe Git" style="margin-top: 12px;"/><br/><sub>Panneau de gestion de sources avec graphe Git dans l'historique</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="Terminal" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>Terminal WebGL par blocs avec panneau de saisie proche d'un éditeur</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax est un environnement de développement (ADE) léger, open source, axé sur
 
 - CodeMirror 6, compatible avec les langages courants comme TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON et Markdown
 - Autocomplétion IA intégrée avec modèles locaux
-- Diffs de modifications IA à accepter ou refuser bloc par bloc
 - Serveurs de langage facultatifs avec diagnostics, navigation, complétion, formatage et serveurs personnalisés
 - Markdown rendu et affichage des images, vidéos, fichiers audio et PDF
 - Mode Vim
@@ -64,7 +63,6 @@ Terax est un environnement de développement (ADE) léger, open source, axé sur
 - Thème d'icônes Catppuccin
 - Recherche approximative, navigation au clavier, renommage intégré et actions contextuelles
 - Mise à jour en direct lorsque les fichiers changent sur le disque
-- Ajout direct de fichiers et sélections au panneau latéral IA
 
 ### Aperçu web
 
@@ -80,13 +78,10 @@ Terax est un environnement de développement (ADE) léger, open source, axé sur
 
 ### IA
 
+- **Autocomplétion intégrée :** suggestions de code dans l'éditeur avec vos propres clés fournisseur ou des modèles entièrement locaux
 - **Fournisseurs avec vos propres clés :** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral et tout endpoint compatible OpenAI
 - **Local / hors ligne :** LM Studio, MLX, Ollama
-- **Flux agentique :** plans, sous-agents, mémoire du projet via `TERAX.md`, lecture / écriture / modification / modifications multiples / grep / glob, bash soumis à approbation et processus en arrière-plan
-- **Orchestration d'agents de programmation :** lancez Claude Code dans un terminal, inspectez sa sortie et envoyez des tâches de suivi via des outils soumis à approbation
-- **Zone de saisie :** extraits de prompt avec `#handle`, fichiers avec `@path`, saisie vocale et pièces jointes depuis l'explorateur ou une sélection
-- **Agents personnalisés** avec leur propre prompt système et sous-ensemble d'outils
-- **Mode plan** qui génère un plan et demande confirmation avant d'agir
+- **Intégration des agents de programmation :** Terax détecte les agents de programmation en terminal (Claude Code, pi, Codex et autres agents CLI) via les séquences d'échappement OSC, affiche leur état dans la cloche de notifications, saute à l'agent qui demande attention avec ⇧⌘A et peut les lancer depuis le menu de nouvel onglet
 
 ## Installation
 
@@ -103,9 +98,9 @@ Les installateurs récents sont disponibles sur la page [Releases](https://githu
 - **NixOS / Nix :** utilisez le flake officiel avec `nix profile install github:crynta/terax-ai` hors NixOS. Sous NixOS, importez le flake et ajoutez `inputs.terax.packages.${pkgs.system}.terax` à `environment.systemPackages`. `nixosModules.terax` offre aussi une configuration simplifiée.
 - **AppImage :** nécessite FUSE. Sans FUSE : `./Terax_*.AppImage --appimage-extract-and-run`. En cas de défauts sous Wayland, essayez `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Les paquets `.deb` / `.rpm` utilisent la pile GTK du système et sont souvent plus fluides.
 
-## Configurer l'IA
+## Configurer l'autocomplétion IA
 
-1. Ouvrez **Paramètres -> IA**.
+1. Ouvrez **Paramètres -> Modèles**.
 2. Choisissez un fournisseur et collez votre clé API. Pour une inférence locale, indiquez votre endpoint LM Studio / MLX / Ollama.
 3. Les clés sont enregistrées dans le trousseau du système via `keyring`. Elles ne sont jamais écrites sur le disque ni dans localStorage.
 
@@ -113,9 +108,9 @@ Les installateurs récents sont disponibles sur la page [Releases](https://githu
 
 **Prérequis**
 
-- Rust (stable), https://rustup.rs
+- Rust (stable), <https://rustup.rs>
 - Node 20+ et [pnpm](https://pnpm.io)
-- Prérequis Tauri pour votre plateforme, https://tauri.app/start/prerequisites/
+- Prérequis Tauri pour votre plateforme, <https://tauri.app/start/prerequisites/>
 
 **Exécution**
 

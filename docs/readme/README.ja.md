@@ -19,12 +19,12 @@
 
 ---
 
-Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオープンソースのターミナル中心 AI ネイティブ開発環境（ADE）です。WebGL レンダラーを備えたネイティブ PTY バックエンド、自分のキーまたは完全なローカルモデルで動作するエージェント型 AI サイドパネル、コードエディター、ファイルエクスプローラー、Git グラフ付きソース管理、ウェブプレビューパネルを内蔵しています。ディスク使用量は約 7-8 MB。テレメトリなし。アカウント不要。
+Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオープンソースのターミナル中心 AI ネイティブ開発環境（ADE）です。WebGL レンダラーを備えたネイティブ PTY バックエンド、ターミナルのコーディングエージェント（Claude Code、pi、Codex など）とのファーストクラス統合、エディター内のインライン AI 自動補完、ファイルエクスプローラー、Git グラフ付きソース管理、ウェブプレビューパネルを内蔵しています。ディスク使用量は約 7-8 MB。テレメトリなし。アカウント不要。
 
 ## スクリーンショット
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="ウェブプレビュー" /><br/><sub>ローカル開発サーバーのウェブプレビュー</sub></td><td align="center"><img src="../ai-workflow.png" alt="AI ウィンドウ" /><br/><sub>コードエディター内の編集差分を伴うエージェント型 AI ワークフロー</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="ウェブプレビュー" /><br/><sub>ローカル開発サーバーのウェブプレビュー</sub></td><td align="center"><img src="../editor.png" alt="コードエディター" /><br/><sub>インライン AI 自動補完を備えたコードエディター</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="テーマと背景画像" style="margin-top: 12px;"/><br/><sub>カスタムテーマ、プリセット、背景画像</sub></td><td align="center"><img src="../source-control.png" alt="ソース管理と Git グラフ" style="margin-top: 12px;"/><br/><sub>履歴に Git グラフを備えたソース管理パネル</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="ターミナル" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>エディターのような入力パネルを備えたブロック型 WebGL ターミナル</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 
 - CodeMirror 6（TS/JS、Rust、Python、Go、C/C++、Java、HTML/CSS、JSON、Markdown など主要言語に対応）
 - ローカルモデル対応のインライン AI 自動補完
-- AI 編集差分をハンク単位で承認または拒否
 - 診断、ナビゲーション、補完、フォーマット、カスタムサーバーに対応したオプトインの言語サーバー
 - Markdown のレンダリングと画像、動画、音声、PDF の表示
 - Vim モード
@@ -64,7 +63,6 @@ Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 - Catppuccin アイコンテーマ
 - あいまい検索、キーボード操作、インライン名前変更、コンテキスト操作
 - ディスク上のファイル変更をリアルタイムに反映
-- ファイルや選択範囲を AI サイドパネルへ直接添付
 
 ### ウェブプレビュー
 
@@ -80,13 +78,10 @@ Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 
 ### AI
 
+- **インライン自動補完:** 自分のプロバイダーキーまたは完全なローカルモデルでエディターにコード補完を表示
 - **BYOK プロバイダー:** OpenAI、Anthropic、Google（Gemini）、Groq、xAI（Grok）、Cerebras、OpenRouter、DeepSeek、Mistral、任意の OpenAI 互換エンドポイント
 - **ローカル / オフライン:** LM Studio、MLX、Ollama
-- **エージェント型ワークフロー:** 計画、サブエージェント、`TERAX.md` によるプロジェクトメモリ、ファイルの読み取り / 書き込み / 編集 / 複数編集 / grep / glob、承認付き bash、バックグラウンドプロセス
-- **コーディングエージェントの連携:** ターミナルで Claude Code を起動し、出力を確認して、承認付きツールから追加作業を送信
-- **コンポーザー:** `#handle` のプロンプトスニペット、`@path` のファイル、音声入力、エクスプローラーや選択範囲からの添付
-- 独自のシステムプロンプトとツールセットを持つ**カスタムエージェント**
-- 実行前に計画を生成して確認する**プランモード**
+- **コーディングエージェント統合:** Terax は OSC エスケープシーケンスでターミナルのコーディングエージェント（Claude Code、pi、Codex などの CLI エージェント）を検出し、通知ベルに状態を表示し、⇧⌘A で注意が必要なエージェントへジャンプし、新規タブメニューから起動できます
 
 ## インストール
 
@@ -103,9 +98,9 @@ Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 - **NixOS / Nix:** 公式 flake を使用します。NixOS 以外では `nix profile install github:crynta/terax-ai`、NixOS では flake をインポートし、`inputs.terax.packages.${pkgs.system}.terax` を `environment.systemPackages` に追加します。より簡単な設定には `nixosModules.terax` も利用できます。
 - **AppImage:** FUSE が必要です。ない場合は `./Terax_*.AppImage --appimage-extract-and-run` を実行してください。Wayland で描画に問題がある場合は `WEBKIT_DISABLE_DMABUF_RENDERER=1` を試してください。`.deb` / `.rpm` はシステムの GTK スタックを使用するため、通常はより滑らかです。
 
-## AI の設定
+## AI 自動補完の設定
 
-1. **設定 -> AI** を開きます。
+1. **設定 -> モデル** を開きます。
 2. プロバイダーを選び API キーを貼り付けます。ローカル推論では LM Studio / MLX / Ollama エンドポイントを指定します。
 3. キーは `keyring` を通して OS のキーチェーンに保存されます。ディスクや localStorage には一切書き込まれません。
 
@@ -113,9 +108,9 @@ Terax は、Tauri 2 + Rust と React 19 で構築された、軽量かつオー�
 
 **前提条件**
 
-- Rust（stable）、https://rustup.rs
+- Rust（stable）、<https://rustup.rs>
 - Node 20+ と [pnpm](https://pnpm.io)
-- プラットフォームごとの Tauri 前提条件、https://tauri.app/start/prerequisites/
+- プラットフォームごとの Tauri 前提条件、<https://tauri.app/start/prerequisites/>
 
 **実行**
 

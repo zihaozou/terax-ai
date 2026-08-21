@@ -9,7 +9,7 @@ Terax is two processes: the Rust backend (`src-tauri/`) and the webview frontend
 - **Rust owns all OS access**: PTY, file system, git, shell spawn, network, secrets, workspace authorization.
 - **The webview never touches the FS, processes, or shells directly**. Every host operation goes through an `invoke()` call to a command registered in `src-tauri/src/lib.rs`.
 
-This boundary is the root of the security model. Untrusted input (terminal escape sequences, file content, AI tool results) is parsed and validated in Rust or in carefully scoped frontend code, never executed by the renderer.
+This boundary is the root of the security model. Untrusted input (terminal escape sequences, file content, network responses) is parsed and validated in Rust or in carefully scoped frontend code, never executed by the renderer.
 
 ## Adding a new IPC command
 
@@ -17,7 +17,7 @@ This boundary is the root of the security model. Untrusted input (terminal escap
 2. Register it in `src-tauri/src/lib.rs` inside the `tauri::generate_handler![...]` block (`src-tauri/src/lib.rs:191`).
 3. If the command uses a Tauri plugin API (window, clipboard, dialog, etc.), add the plugin permission to `src-tauri/capabilities/default.json`.
 4. Add a typed frontend wrapper in the matching `src/modules/<area>/lib/` directory and call it through Tauri's `invoke()` API.
-5. If the command touches the file system, network, or shell, it must go through the existing guards (`security.ts` deny-list, workspace authorization registry, SSRF guard, AI tool approval).
+5. If the command touches the file system, network, or shell, it must go through the existing guards (workspace authorization registry, SSRF guard).
 
 Custom commands do not need to be listed one-by-one in `default.json`; the capability covers the window. Plugin permissions do.
 
@@ -90,18 +90,18 @@ All git commands are gated through the workspace authorization registry.
 
 Three distinct surfaces:
 
-- `shell_run_command` - one-shot subshell exec for AI tools
-- `shell_session_open` / `shell_session_run` / `shell_session_close` - persistent agent shell with state across calls
+- `shell_run_command` - one-shot subshell exec (editor external formatting)
+- `shell_session_open` / `shell_session_run` / `shell_session_close` - persistent shell sessions with state across calls
 - `shell_bg_spawn` / `shell_bg_logs` / `shell_bg_kill` / `shell_bg_list` - long-running background processes with bounded ring-buffer log capture
 
 ### Workspace (`src-tauri/src/modules/workspace.rs`)
 
-- `workspace_authorize` / `workspace_current_dir` - the spawn/git/AI cwd authorization registry
+- `workspace_authorize` / `workspace_current_dir` - the spawn/git cwd authorization registry
 - `wsl_list_distros` / `wsl_default_distro` / `wsl_home` - WSL bridge
 
 ### Network (`src-tauri/src/modules/net.rs`)
 
-- `ai_http_request` / `ai_http_stream` - AI HTTP proxy with SSRF guard
+- `ai_http_stream` - HTTP proxy with SSRF guard (autocomplete provider calls)
 - `lm_ping` - local-model ping
 
 ### Secrets (`src-tauri/src/modules/secrets.rs`)

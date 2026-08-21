@@ -19,12 +19,12 @@
 
 ---
 
-Terax adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada terminal, dan berteknologi AI yang dibangun dengan Tauri 2 + Rust dan React 19. Terax memiliki backend PTY native dengan perender WebGL, panel samping AI berbasis agen yang berjalan dengan kunci Anda sendiri atau model yang sepenuhnya lokal, serta editor kode, penjelajah berkas, kontrol sumber dengan grafik Git, dan panel pratinjau web. Sekitar 7-8 MB di disk. Tanpa telemetri. Tanpa akun.
+Terax adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada terminal, dan berteknologi AI yang dibangun dengan Tauri 2 + Rust dan React 19. Terax memiliki backend PTY native dengan perender WebGL, integrasi kelas satu untuk agen pemrograman terminal (Claude Code, pi, Codex, dan sejenisnya), pelengkapan otomatis AI inline di editor, serta penjelajah berkas, kontrol sumber dengan grafik Git, dan panel pratinjau web. Sekitar 7-8 MB di disk. Tanpa telemetri. Tanpa akun.
 
 ## Tangkapan layar
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="Pratinjau web" /><br/><sub>Pratinjau web server pengembangan lokal</sub></td><td align="center"><img src="../ai-workflow.png" alt="Jendela AI" /><br/><sub>Alur kerja AI berbasis agen dengan diff penyuntingan di editor kode</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="Pratinjau web" /><br/><sub>Pratinjau web server pengembangan lokal</sub></td><td align="center"><img src="../editor.png" alt="Editor kode" /><br/><sub>Editor kode dengan pelengkapan otomatis AI inline</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="Tema dan gambar latar" style="margin-top: 12px;"/><br/><sub>Tema kustom, preset, dan gambar latar</sub></td><td align="center"><img src="../source-control.png" alt="Kontrol sumber dan grafik Git" style="margin-top: 12px;"/><br/><sub>Panel kontrol sumber dengan grafik Git dalam riwayat</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="Terminal" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>Terminal WebGL berbasis blok dengan panel masukan seperti editor</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada
 
 - CodeMirror 6, mendukung bahasa populer seperti TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON, dan Markdown
 - Pelengkapan otomatis AI inline dengan dukungan model lokal
-- Diff penyuntingan AI yang dapat diterima atau ditolak per bagian
 - Dukungan server bahasa opsional dengan diagnostik, navigasi, pelengkapan, pemformatan, dan server kustom
 - Markdown terender serta tampilan gambar, video, audio, dan PDF
 - Mode Vim
@@ -64,7 +63,6 @@ Terax adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada
 - Tema ikon Catppuccin
 - Pencarian fuzzy, navigasi keyboard, ganti nama inline, dan tindakan kontekstual
 - Pembaruan langsung saat berkas berubah di disk
-- Lampirkan berkas dan pilihan langsung ke panel samping AI
 
 ### Pratinjau web
 
@@ -80,13 +78,10 @@ Terax adalah lingkungan pengembangan (ADE) ringan, sumber terbuka, berfokus pada
 
 ### AI
 
+- **Pelengkapan otomatis inline:** saran kode di editor dengan kunci penyedia Anda sendiri atau model yang sepenuhnya lokal
 - **Penyedia dengan kunci Anda sendiri:** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral, dan endpoint apa pun yang kompatibel dengan OpenAI
 - **Lokal / offline:** LM Studio, MLX, Ollama
-- **Alur kerja berbasis agen:** rencana, subagen, memori proyek melalui `TERAX.md`, baca / tulis / sunting / multisunting / grep / glob, bash dengan persetujuan, dan proses latar belakang
-- **Orkestrasi agen pemrograman:** jalankan Claude Code di terminal, periksa output, dan kirim pekerjaan lanjutan melalui alat yang memerlukan persetujuan
-- **Komposer:** cuplikan prompt melalui `#handle`, berkas melalui `@path`, masukan suara, serta lampiran dari penjelajah atau pilihan
-- **Agen kustom** dengan prompt sistem dan subset alat sendiri
-- **Mode rencana** yang membuat rencana dan meminta konfirmasi sebelum bertindak
+- **Integrasi agen pemrograman:** Terax mendeteksi agen pemrograman terminal (Claude Code, pi, Codex, dan agen CLI lainnya) melalui sekuens escape OSC, menampilkan statusnya di lonceng notifikasi, melompat ke agen yang membutuhkan perhatian dengan ⇧⌘A, dan dapat meluncurkannya dari menu tab baru
 
 ## Instalasi
 
@@ -103,9 +98,9 @@ Penginstal terbaru tersedia di halaman [Releases](https://github.com/crynta/tera
 - **NixOS / Nix:** gunakan flake resmi. Di luar NixOS, jalankan `nix profile install github:crynta/terax-ai`. Di NixOS, impor flake dan tambahkan `inputs.terax.packages.${pkgs.system}.terax` ke `environment.systemPackages`. `nixosModules.terax` juga tersedia untuk pengaturan yang lebih sederhana.
 - **AppImage:** memerlukan FUSE. Tanpanya, jalankan `./Terax_*.AppImage --appimage-extract-and-run`. Jika ada masalah perenderan di Wayland, coba `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Paket `.deb` / `.rpm` menggunakan stack GTK sistem dan biasanya lebih lancar.
 
-## Konfigurasi AI
+## Konfigurasi pelengkapan otomatis AI
 
-1. Buka **Pengaturan -> AI**.
+1. Buka **Pengaturan -> Model**.
 2. Pilih penyedia dan tempel kunci API. Untuk inferensi lokal, arahkan Terax ke endpoint LM Studio / MLX / Ollama.
 3. Kunci disimpan di keychain sistem operasi melalui `keyring`. Kunci tidak pernah ditulis ke disk atau localStorage.
 
@@ -113,9 +108,9 @@ Penginstal terbaru tersedia di halaman [Releases](https://github.com/crynta/tera
 
 **Prasyarat**
 
-- Rust (stable), https://rustup.rs
+- Rust (stable), <https://rustup.rs>
 - Node 20+ dan [pnpm](https://pnpm.io)
-- Prasyarat Tauri untuk platform Anda, https://tauri.app/start/prerequisites/
+- Prasyarat Tauri untuk platform Anda, <https://tauri.app/start/prerequisites/>
 
 **Jalankan**
 

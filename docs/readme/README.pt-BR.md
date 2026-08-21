@@ -19,12 +19,12 @@
 
 ---
 
-Terax é um ambiente de desenvolvimento (ADE) leve, de código aberto, focado no terminal e nativo de IA, criado com Tauri 2 + Rust e React 19. Inclui backend PTY nativo com renderizador WebGL, painel lateral de IA com agentes que usa suas próprias chaves ou modelos totalmente locais, além de editor de código, explorador de arquivos, controle de versão com gráfico Git e painel de visualização web. Cerca de 7-8 MB em disco. Sem telemetria. Sem conta.
+Terax é um ambiente de desenvolvimento (ADE) leve, de código aberto, focado no terminal e nativo de IA, criado com Tauri 2 + Rust e React 19. Inclui backend PTY nativo com renderizador WebGL, integração de primeira classe para agentes de programação no terminal (Claude Code, pi, Codex e similares), autocompletar de IA inline no editor, além de explorador de arquivos, controle de versão com gráfico Git e painel de visualização web. Cerca de 7-8 MB em disco. Sem telemetria. Sem conta.
 
 ## Capturas de tela
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="Visualização web" /><br/><sub>Visualização de servidores de desenvolvimento locais</sub></td><td align="center"><img src="../ai-workflow.png" alt="Janela de IA" /><br/><sub>Fluxo de IA com agentes e diffs de edição no editor</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="Visualização web" /><br/><sub>Visualização de servidores de desenvolvimento locais</sub></td><td align="center"><img src="../editor.png" alt="Editor de código" /><br/><sub>Editor de código com autocompletar de IA</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="Temas e imagem de fundo" style="margin-top: 12px;"/><br/><sub>Temas personalizados, predefinições e imagens de fundo</sub></td><td align="center"><img src="../source-control.png" alt="Controle de versão e gráfico Git" style="margin-top: 12px;"/><br/><sub>Painel de controle de versão com gráfico Git no histórico</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="Terminal" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>Terminal WebGL baseado em blocos com painel de entrada semelhante a um editor</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax é um ambiente de desenvolvimento (ADE) leve, de código aberto, focado no
 
 - CodeMirror 6, compatível com linguagens populares como TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON e Markdown
 - Autocompletar por IA com suporte a modelos locais
-- Diffs de edição por IA aceitos ou rejeitados bloco por bloco
 - Servidores de linguagem opcionais com diagnósticos, navegação, conclusão, formatação e servidores personalizados
 - Markdown renderizado e visualização de imagens, vídeos, áudio e PDF
 - Modo Vim
@@ -64,7 +63,6 @@ Terax é um ambiente de desenvolvimento (ADE) leve, de código aberto, focado no
 - Tema de ícones Catppuccin
 - Busca aproximada, navegação por teclado, renomeação integrada e ações de contexto
 - Atualizações ao vivo quando arquivos mudam no disco
-- Anexe arquivos e seleções diretamente ao painel de IA
 
 ### Visualização web
 
@@ -80,13 +78,10 @@ Terax é um ambiente de desenvolvimento (ADE) leve, de código aberto, focado no
 
 ### IA
 
+- **Autocompletar inline:** sugestões de código no editor com suas próprias chaves de provedor ou modelos totalmente locais
 - **Provedores com sua própria chave:** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral e qualquer endpoint compatível com OpenAI
 - **Local / offline:** LM Studio, MLX, Ollama
-- **Fluxo com agentes:** planos, subagentes, memória do projeto via `TERAX.md`, leitura / escrita / edição / multiedição / grep / glob, bash com aprovação e processos em segundo plano
-- **Orquestração de agentes de programação:** inicie Claude Code no terminal, inspecione a saída e envie tarefas adicionais por ferramentas sujeitas a aprovação
-- **Compositor:** trechos de prompt com `#handle`, arquivos com `@path`, entrada de voz e anexos do explorador ou da seleção
-- **Agentes personalizados** com prompt de sistema e subconjunto de ferramentas próprios
-- **Modo de planejamento** que gera um plano e pede confirmação antes de agir
+- **Integração com agentes de programação:** o Terax detecta agentes de programação no terminal (Claude Code, pi, Codex e outros agentes CLI) via sequências de escape OSC, mostra o estado no sino de notificações, salta para o agente que precisa de atenção com ⇧⌘A e pode iniciá-los pelo menu de nova aba
 
 ## Instalação
 
@@ -103,9 +98,9 @@ Os instaladores mais recentes estão na página de [Releases](https://github.com
 - **NixOS / Nix:** use o flake oficial com `nix profile install github:crynta/terax-ai` fora do NixOS. No NixOS, importe o flake e adicione `inputs.terax.packages.${pkgs.system}.terax` a `environment.systemPackages`. `nixosModules.terax` também oferece uma configuração simplificada.
 - **AppImage:** requer FUSE. Sem ele: `./Terax_*.AppImage --appimage-extract-and-run`. Em caso de falhas no Wayland, tente `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Os pacotes `.deb` / `.rpm` usam a pilha GTK do sistema e costumam ser mais suaves.
 
-## Configurar a IA
+## Configurar o autocompletar de IA
 
-1. Abra **Configurações -> IA**.
+1. Abra **Configurações -> Modelos**.
 2. Escolha um provedor e cole sua chave de API. Para inferência local, indique o endpoint do LM Studio / MLX / Ollama.
 3. As chaves são gravadas no chaveiro do sistema via `keyring`. Nunca são gravadas no disco nem no localStorage.
 
@@ -113,9 +108,9 @@ Os instaladores mais recentes estão na página de [Releases](https://github.com
 
 **Pré-requisitos**
 
-- Rust (stable), https://rustup.rs
+- Rust (stable), <https://rustup.rs>
 - Node 20+ e [pnpm](https://pnpm.io)
-- Pré-requisitos do Tauri para sua plataforma, https://tauri.app/start/prerequisites/
+- Pré-requisitos do Tauri para sua plataforma, <https://tauri.app/start/prerequisites/>
 
 **Executar**
 

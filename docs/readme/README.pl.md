@@ -19,12 +19,12 @@
 
 ---
 
-Terax to lekkie, otwartoźródłowe, terminalowe środowisko programistyczne (ADE) stworzone z myślą o AI, zbudowane na Tauri 2 + Rust i React 19. Zawiera natywny backend PTY z rendererem WebGL, panel agentowej AI działający z własnymi kluczami lub całkowicie lokalnymi modelami, a także edytor kodu, eksplorator plików, kontrolę źródeł z grafem Git i panel podglądu stron. Około 7-8 MB na dysku. Bez telemetrii. Bez konta.
+Terax to lekkie, otwartoźródłowe, terminalowe środowisko programistyczne (ADE) stworzone z myślą o AI, zbudowane na Tauri 2 + Rust i React 19. Zawiera natywny backend PTY z rendererem WebGL, pierwszorzędną integrację z agentami programistycznymi w terminalu (Claude Code, pi, Codex i podobnymi), uzupełnianie kodu AI w edytorze, a także eksplorator plików, kontrolę źródeł z grafem Git i panel podglądu stron. Około 7-8 MB na dysku. Bez telemetrii. Bez konta.
 
 ## Zrzuty ekranu
 
 <table>
-  <tr><td align="center"><img src="../web-preview.png" alt="Podgląd stron" /><br/><sub>Podgląd lokalnych serwerów deweloperskich</sub></td><td align="center"><img src="../ai-workflow.png" alt="Okno AI" /><br/><sub>Agentowy przepływ pracy AI z różnicami zmian w edytorze</sub></td></tr>
+  <tr><td align="center"><img src="../web-preview.png" alt="Podgląd stron" /><br/><sub>Podgląd lokalnych serwerów deweloperskich</sub></td><td align="center"><img src="../editor.png" alt="Edytor kodu" /><br/><sub>Edytor kodu z uzupełnianiem AI</sub></td></tr>
   <tr><td align="center"><img src="../themes.png" alt="Motywy i tło" style="margin-top: 12px;"/><br/><sub>Własne motywy, ustawienia i obrazy tła</sub></td><td align="center"><img src="../source-control.png" alt="Kontrola źródeł i graf Git" style="margin-top: 12px;"/><br/><sub>Panel kontroli źródeł z grafem Git w historii</sub></td></tr>
   <tr><td colspan="2" align="center"><img src="../terminal.png" alt="Terminal" style="border-radius: 4px; margin-top: 12px;" /><br/><sub>Blokowy terminal WebGL z panelem wprowadzania podobnym do edytora</sub></td></tr>
 </table>
@@ -46,7 +46,6 @@ Terax to lekkie, otwartoźródłowe, terminalowe środowisko programistyczne (AD
 
 - CodeMirror 6 obsługujący popularne języki, w tym TS/JS, Rust, Python, Go, C/C++, Java, HTML/CSS, JSON i Markdown
 - Uzupełnianie kodu przez AI z obsługą modeli lokalnych
-- Różnice zmian AI akceptowane lub odrzucane fragment po fragmencie
 - Opcjonalne serwery językowe z diagnostyką, nawigacją, uzupełnianiem, formatowaniem i własnymi serwerami
 - Renderowany Markdown oraz podgląd obrazów, wideo, audio i PDF
 - Tryb Vim
@@ -64,7 +63,6 @@ Terax to lekkie, otwartoźródłowe, terminalowe środowisko programistyczne (AD
 - Motyw ikon Catppuccin
 - Wyszukiwanie rozmyte, nawigacja klawiaturą, zmiana nazwy w miejscu i akcje kontekstowe
 - Aktualizacja na żywo po zmianie plików na dysku
-- Dołączanie plików i zaznaczeń bezpośrednio do panelu AI
 
 ### Podgląd stron
 
@@ -80,13 +78,10 @@ Terax to lekkie, otwartoźródłowe, terminalowe środowisko programistyczne (AD
 
 ### AI
 
+- **Uzupełnianie w edytorze:** sugestie kodu z własnymi kluczami dostawców lub całkowicie lokalnymi modelami
 - **Dostawcy z własnym kluczem:** OpenAI, Anthropic, Google (Gemini), Groq, xAI (Grok), Cerebras, OpenRouter, DeepSeek, Mistral i dowolny endpoint zgodny z OpenAI
 - **Lokalnie / offline:** LM Studio, MLX, Ollama
-- **Agentowy przepływ pracy:** plany, podagenci, pamięć projektu przez `TERAX.md`, odczyt / zapis / edycja / wielokrotna edycja / grep / glob, bash wymagający zgody i procesy w tle
-- **Orkiestracja agentów programistycznych:** uruchom Claude Code w terminalu, sprawdź wynik i wysyłaj dalsze zadania przez narzędzia wymagające zgody
-- **Pole wprowadzania:** fragmenty promptów przez `#handle`, pliki przez `@path`, wejście głosowe i załączniki z eksploratora lub zaznaczenia
-- **Własne agenty** z osobnym promptem systemowym i zestawem narzędzi
-- **Tryb planowania**, który tworzy plan i prosi o potwierdzenie przed działaniem
+- **Integracja agentów programistycznych:** Terax wykrywa agentów programistycznych w terminalu (Claude Code, pi, Codex i innych agentów CLI) przez sekwencje sterujące OSC, pokazuje ich stan w dzwonku powiadomień, przechodzi ⇧⌘A do agenta wymagającego uwagi i może uruchamiać ich z menu nowej karty
 
 ## Instalacja
 
@@ -103,9 +98,9 @@ Najnowsze instalatory znajdują się na stronie [Releases](https://github.com/cr
 - **NixOS / Nix:** użyj oficjalnego flake. Poza NixOS uruchom `nix profile install github:crynta/terax-ai`. W NixOS zaimportuj flake i dodaj `inputs.terax.packages.${pkgs.system}.terax` do `environment.systemPackages`. Dostępny jest też prostszy moduł `nixosModules.terax`.
 - **AppImage:** wymaga FUSE. Bez niego uruchom `./Terax_*.AppImage --appimage-extract-and-run`. Przy błędach renderowania w Wayland spróbuj `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Pakiety `.deb` / `.rpm` korzystają z systemowego GTK i zwykle działają płynniej.
 
-## Konfiguracja AI
+## Konfiguracja uzupełniania AI
 
-1. Otwórz **Ustawienia -> AI**.
+1. Otwórz **Ustawienia -> Modele**.
 2. Wybierz dostawcę i wklej klucz API. Dla lokalnego wnioskowania wskaż endpoint LM Studio / MLX / Ollama.
 3. Klucze trafiają do systemowego pęku kluczy przez `keyring`. Nigdy nie są zapisywane na dysku ani w localStorage.
 
@@ -113,9 +108,9 @@ Najnowsze instalatory znajdują się na stronie [Releases](https://github.com/cr
 
 **Wymagania**
 
-- Rust (stable), https://rustup.rs
+- Rust (stable), <https://rustup.rs>
 - Node 20+ i [pnpm](https://pnpm.io)
-- Wymagania Tauri dla platformy, https://tauri.app/start/prerequisites/
+- Wymagania Tauri dla platformy, <https://tauri.app/start/prerequisites/>
 
 **Uruchamianie**
 
