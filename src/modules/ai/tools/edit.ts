@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { native } from "../lib/native";
+import { native } from "@/lib/native";
 import { checkWritableCanonical } from "../lib/security";
 import { newQueuedEditId, usePlanStore } from "../store/planStore";
 import { resolvePath, type ToolContext } from "./context";

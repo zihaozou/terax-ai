@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { native } from "../lib/native";
+import { native } from "@/lib/native";
 import { checkShellCommand } from "../lib/security";
 import type { ToolContext } from "./context";
 import { currentWorkspaceEnv, workspaceScopeKey } from "@/modules/workspace";

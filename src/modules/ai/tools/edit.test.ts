@@ -8,7 +8,7 @@ const nativeMock = vi.hoisted(() => ({
   writeFile: vi.fn(async () => undefined),
 }));
 
-vi.mock("../lib/native", () => ({ native: nativeMock }));
+vi.mock("@/lib/native", () => ({ native: nativeMock }));
 
 vi.mock("../lib/security", () => ({
   checkWritableCanonical: vi.fn(async (path: string) => ({

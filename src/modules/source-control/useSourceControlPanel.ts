@@ -4,7 +4,7 @@ import {
   type GitDiscardEntry,
   type GitRepoInfo,
   type GitStatusSnapshot,
-} from "@/modules/ai/lib/native";
+} from "@/lib/native";
 import { useChatStore } from "@/modules/ai/store/chatStore";
 import {
   modelSupportsTemperature,

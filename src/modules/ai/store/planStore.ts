@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { native } from "../lib/native";
+import { native } from "@/lib/native";
 
 export type QueuedEdit = {
   id: string;

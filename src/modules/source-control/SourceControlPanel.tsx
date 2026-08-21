@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/tooltip";
 import { IS_MAC } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { type GitBranchEntry, native } from "@/modules/ai/lib/native";
+import { type GitBranchEntry, native } from "@/lib/native";
 import {
   copyToClipboard,
   revealInFinder,

@@ -28,7 +28,7 @@ import {
   useSelectionAskAi,
 } from "@/modules/ai";
 import { AiComposerProvider } from "@/modules/ai/lib/composer";
-import { native } from "@/modules/ai/lib/native";
+import { native } from "@/lib/native";
 import { CommandPalette, createCommandItems } from "@/modules/command-palette";
 import { useControlBridge } from "@/modules/control";
 import {

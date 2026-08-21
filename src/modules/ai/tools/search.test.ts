@@ -8,7 +8,7 @@ const nativeMock = vi.hoisted(() => ({
   grep: vi.fn(),
 }));
 
-vi.mock("../lib/native", () => ({
+vi.mock("@/lib/native", () => ({
   native: nativeMock,
 }));
 
