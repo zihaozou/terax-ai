@@ -1,4 +1,4 @@
-import type { ProviderId } from "@/modules/ai/config";
+import type { ProviderId } from "@/lib/models/config";
 import {
   AppleIcon,
   ChatGptIcon,

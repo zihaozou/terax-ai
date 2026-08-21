@@ -9,9 +9,9 @@ import {
   type ProviderId,
   providerNeedsKey,
   resolveModel,
-} from "../config";
+} from "./config";
 import type { CustomEndpointKeys, ProviderKeys } from "./keyring";
-import { createProxyFetch } from "./proxyFetch";
+import { createProxyFetch } from "./proxy-fetch";
 
 const localProxyFetch = createProxyFetch({ allowPrivateNetwork: true });
 

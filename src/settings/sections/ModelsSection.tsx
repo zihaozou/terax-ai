@@ -17,14 +17,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import {
-  getBindingTokens,
-  SHORTCUTS,
-} from "@/modules/shortcuts/shortcuts";
+import { getBindingTokens, SHORTCUTS } from "@/modules/shortcuts/shortcuts";
 import {
   type CustomEndpoint,
   compatModelIdForEndpoint,
-  DEFAULT_MODEL_ID,
   getAutocompleteEligibleModels,
   getCompatModelInfo,
   getModel,
@@ -39,7 +35,7 @@ import {
   STT_PROVIDER_LABELS,
   type SttProvider,
   WHISPERCPP_DEFAULT_BASE_URL,
-} from "@/modules/ai/config";
+} from "@/lib/models/config";
 import {
   type CustomEndpointKeys,
   clearCustomEndpointKey,
@@ -48,8 +44,7 @@ import {
   getAllKeys,
   setCustomEndpointKey,
   setKey,
-} from "@/modules/ai/lib/keyring";
-import { useChatStore } from "@/modules/ai/store/chatStore";
+} from "@/lib/models/keyring";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   type AutocompleteTrigger,
@@ -241,16 +236,14 @@ export function ModelsSection() {
       await setRecentModelIds(recentModelIds.filter((m) => m !== deadModelId));
     }
 
-    // If the deleted endpoint was the active model, the selection would dangle
-    // and the next send throws "Custom endpoint not found". Fall back to another
-    // endpoint when one remains, else the default model.
+    // If the deleted endpoint was the autocomplete model, the selection would
+    // dangle. Fall back to another endpoint when one remains, else clear it so
+    // autocomplete falls back to the provider default.
     const remaining = customEndpoints.filter((e) => e.id !== id);
-    const { selectedModelId, setSelectedModelId } = useChatStore.getState();
-    if (selectedModelId === deadModelId) {
-      setSelectedModelId(
-        remaining[0]
-          ? compatModelIdForEndpoint(remaining[0].id)
-          : DEFAULT_MODEL_ID,
+    const { autocompleteModelId } = usePreferencesStore.getState();
+    if (autocompleteModelId === deadModelId) {
+      await setAutocompleteModelId(
+        remaining[0] ? compatModelIdForEndpoint(remaining[0].id) : "",
       );
     }
 

@@ -6,7 +6,7 @@ import {
   PROVIDERS,
   type ProviderId,
   providerSupportsKey,
-} from "../config";
+} from "./config";
 
 export type ProviderKeys = Record<ProviderId, string | null>;
 export type CustomEndpointKeys = Record<string, string | null>;

@@ -13,7 +13,7 @@ import {
   OPENAI_COMPATIBLE_DEFAULT_BASE_URL,
   type SttProvider,
   WHISPERCPP_DEFAULT_BASE_URL,
-} from "@/modules/ai/config";
+} from "@/lib/models/config";
 import {
   type AgentLaunchCommands,
   DEFAULT_AGENT_LAUNCH_COMMANDS,

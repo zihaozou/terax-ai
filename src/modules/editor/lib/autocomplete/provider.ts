@@ -4,9 +4,9 @@ import {
   LMSTUDIO_DEFAULT_BASE_URL,
   modelSupportsTemperature,
   modelUsesReasoningTokens,
-} from "@/modules/ai/config";
-import { buildLanguageModel } from "@/modules/ai/lib/agent";
-import { EMPTY_PROVIDER_KEYS } from "@/modules/ai/lib/keyring";
+} from "@/lib/models/config";
+import { buildLanguageModel } from "@/lib/models/language-model";
+import { EMPTY_PROVIDER_KEYS } from "@/lib/models/keyring";
 import { generateText } from "ai";
 import {
   buildUserPrompt,
