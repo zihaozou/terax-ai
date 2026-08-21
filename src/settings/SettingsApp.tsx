@@ -10,13 +10,11 @@ import {
   PaintBoardIcon,
   Settings01Icon,
   SourceCodeIcon,
-  UserMultiple02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { type JSX, useEffect, useState } from "react";
 import { AboutSection } from "./sections/AboutSection";
-import { AgentsSection } from "./sections/AgentsSection";
 import { EditorSection } from "./sections/EditorSection";
 import { GeneralSection } from "./sections/GeneralSection";
 import { ModelsSection } from "./sections/ModelsSection";
@@ -55,12 +53,6 @@ const TABS: {
   },
   { id: "models", label: "Models", icon: AiScanIcon, component: ModelsSection },
   {
-    id: "agents",
-    label: "Agents",
-    icon: UserMultiple02Icon,
-    component: AgentsSection,
-  },
-  {
     id: "about",
     label: "About",
     icon: InformationCircleIcon,
@@ -74,7 +66,6 @@ const VALID_TABS: SettingsTab[] = [
   "themes",
   "shortcuts",
   "models",
-  "agents",
   "about",
 ];
 
@@ -82,8 +73,8 @@ function readInitialTab(): SettingsTab {
   if (typeof window === "undefined") return "general";
   const url = new URL(window.location.href);
   const t = url.searchParams.get("tab");
-  // Back-compat: legacy "ai" / "connections" → "models".
-  if (t === "ai" || t === "connections") return "models";
+  // Back-compat: legacy "ai" → "models".
+  if (t === "ai") return "models";
   if (t && (VALID_TABS as string[]).includes(t)) return t as SettingsTab;
   return "general";
 }
@@ -99,7 +90,7 @@ export function SettingsApp() {
 
   useEffect(() => {
     const apply = (detail: string) => {
-      if (detail === "ai" || detail === "connections") {
+      if (detail === "ai") {
         setActive("models");
         return;
       }
