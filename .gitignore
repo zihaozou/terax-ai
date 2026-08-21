@@ -18,6 +18,7 @@ stats.html
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea
+.pi/
 .DS_Store
 *.suo
 *.ntvs*
