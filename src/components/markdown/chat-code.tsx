@@ -2,18 +2,23 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useChatStore } from "@/modules/ai/store/chatStore";
-import {
-  ArrowRight01Icon,
-  CheckmarkCircle01Icon,
-  CopyIcon,
-  TerminalIcon,
-} from "@hugeicons/core-free-icons";
+import { CheckmarkCircle01Icon, CopyIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Shimmer } from "./shimmer";
-import { highlight, isHighlightable, type HighlightedNode } from "./chat-code-lezer";
+import {
+  highlight,
+  isHighlightable,
+  type HighlightedNode,
+} from "./chat-code-lezer";
 
 // True while the parent message is still streaming from the model. We hide
 // fenced-code contents during this phase: parsing partial code is wasted
@@ -41,14 +46,16 @@ const WINDOWS_SHELL = new Set([
 const SHELL_LANGS = new Set([...POSIX_SHELL, ...WINDOWS_SHELL]);
 
 function shellPrompt(lang: string): string {
-  if (WINDOWS_SHELL.has(lang)) return lang === "cmd" || lang === "bat" || lang === "batch" ? ">" : "PS>";
+  if (WINDOWS_SHELL.has(lang))
+    return lang === "cmd" || lang === "bat" || lang === "batch" ? ">" : "PS>";
   return "$";
 }
 
 function normalizeLangLabel(raw: string): string {
   const lower = raw.toLowerCase();
   if (POSIX_SHELL.has(lower)) return "bash";
-  if (lower === "pwsh" || lower === "ps1" || lower === "ps") return "powershell";
+  if (lower === "pwsh" || lower === "ps1" || lower === "ps")
+    return "powershell";
   if (lower === "bat" || lower === "batch") return "cmd";
   return lower || "text";
 }
@@ -186,7 +193,6 @@ function CommandCard({ code, lang }: { code: string; lang: string }) {
           {normalizeLangLabel(lang)}
         </span>
         <div className="flex items-center gap-1">
-          <RunInTerminalButton command={code} />
           <CopyButton text={code} />
         </div>
       </div>
@@ -209,36 +215,6 @@ function CommandCard({ code, lang }: { code: string; lang: string }) {
         </pre>
       </div>
     </div>
-  );
-}
-
-function RunInTerminalButton({ command }: { command: string }) {
-  const [sent, setSent] = useState(false);
-  const tRef = useRef<number>(0);
-  useEffect(() => () => window.clearTimeout(tRef.current), []);
-  const onRun = () => {
-    const ok = useChatStore.getState().live.injectIntoActivePty(command);
-    if (!ok) return;
-    setSent(true);
-    tRef.current = window.setTimeout(() => setSent(false), 1500);
-  };
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      onClick={onRun}
-      className="h-5 gap-1 px-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground"
-      aria-label="Run in active terminal"
-      title="Run in active terminal"
-    >
-      <HugeiconsIcon
-        icon={sent ? TerminalIcon : ArrowRight01Icon}
-        size={11}
-        strokeWidth={1.75}
-      />
-      <span>{sent ? "Sent" : "Run"}</span>
-    </Button>
   );
 }
 

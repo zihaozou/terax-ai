@@ -23,8 +23,8 @@ import {
   useState,
 } from "react";
 import { Streamdown } from "streamdown";
-import { ChatStreamingProvider } from "./chat-code";
-import { MarkdownCode } from "./markdown-code";
+import { ChatStreamingProvider } from "@/components/markdown/chat-code";
+import { MarkdownCode } from "@/components/markdown/markdown-code";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];

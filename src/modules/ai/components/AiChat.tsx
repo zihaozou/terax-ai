@@ -10,7 +10,7 @@ import {
   MessageResponse,
   type MessageResponseProps,
 } from "@/components/ai-elements/message";
-import { MarkdownCode } from "@/components/ai-elements/markdown-code";
+import { MarkdownCode } from "@/components/markdown/markdown-code";
 import {
   MarkdownLink,
   type MarkdownLinkProps,
@@ -85,8 +85,7 @@ type ContextChip =
 
 const SELECTION_RE =
   /<selection\s+source="(terminal|editor)">\n?([\s\S]*?)\n?<\/selection>/g;
-const FILE_RE =
-  /<file\s+name="([^"]+)"[^>]*>\n?([\s\S]*?)\n?<\/file>/g;
+const FILE_RE = /<file\s+name="([^"]+)"[^>]*>\n?([\s\S]*?)\n?<\/file>/g;
 const SNIPPET_RE = /<snippet\s+name="([^"]+)">\n?[\s\S]*?\n?<\/snippet>/g;
 
 function countLines(s: string): number {
@@ -206,7 +205,8 @@ export function AiChatView({
     !isBusy && hitStepCap && lastMessage?.role === "assistant";
 
   const onApproval = useCallback(
-    (id: string, approved: boolean) => addToolApprovalResponse({ id, approved }),
+    (id: string, approved: boolean) =>
+      addToolApprovalResponse({ id, approved }),
     [addToolApprovalResponse],
   );
 
@@ -369,9 +369,10 @@ const RenderedMessage = memo(function RenderedMessage({
     );
   }
 
-  const groups = useMemo(() => buildPartGroups(message.parts as AnyPart[]), [
-    message.parts,
-  ]);
+  const groups = useMemo(
+    () => buildPartGroups(message.parts as AnyPart[]),
+    [message.parts],
+  );
 
   return (
     <Message from={message.role}>
@@ -540,9 +541,7 @@ const ReadGroup = memo(function ReadGroup({ parts }: { parts: AnyPart[] }) {
                 strokeWidth={1.75}
                 className="shrink-0 opacity-60"
               />
-              <span className="truncate text-foreground">
-                {basename(path)}
-              </span>
+              <span className="truncate text-foreground">{basename(path)}</span>
               <span className="truncate opacity-60">{path}</span>
             </li>
           ))}
@@ -600,12 +599,7 @@ const aiStreamdownComponents = {
 };
 
 function AiMessageResponse(props: Omit<MessageResponseProps, "components">) {
-  return (
-    <MessageResponse
-      {...props}
-      components={aiStreamdownComponents}
-    />
-  );
+  return <MessageResponse {...props} components={aiStreamdownComponents} />;
 }
 
 const RenderedPart = memo(function RenderedPart({
@@ -620,6 +614,7 @@ const RenderedPart = memo(function RenderedPart({
   if (part.type === "text") {
     return (
       <AiMessageResponse streaming={streaming}>
+        {/* SAFETY: runtime type guard above narrows part to text */}
         {(part as unknown as { text: string }).text}
       </AiMessageResponse>
     );
@@ -630,6 +625,7 @@ const RenderedPart = memo(function RenderedPart({
       <Reasoning>
         <ReasoningTrigger />
         <ReasoningContent>
+          {/* SAFETY: runtime type guard above narrows part to reasoning */}
           {(part as unknown as { text: string }).text}
         </ReasoningContent>
       </Reasoning>
@@ -642,7 +638,10 @@ const RenderedPart = memo(function RenderedPart({
   ) {
     return (
       <RenderedTool
-        part={part as unknown as AnyToolPart}
+        part={
+          // SAFETY: runtime type guard above narrows part to tool
+          part as unknown as AnyToolPart
+        }
         onApproval={onApproval}
       />
     );
