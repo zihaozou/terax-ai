@@ -33,11 +33,7 @@ pub fn window_backdrop_kind() -> Backdrop {
 /// `dark` only matters for Mica, which tints its own backdrop and cannot read
 /// the webview's theme.
 #[tauri::command]
-pub fn window_set_backdrop(
-    window: tauri::Window,
-    enabled: bool,
-    dark: bool,
-) -> Result<(), String> {
+pub fn window_set_backdrop(window: tauri::Window, enabled: bool, dark: bool) -> Result<(), String> {
     set_backdrop(&window, enabled, dark)
 }
 
@@ -68,10 +64,17 @@ fn set_backdrop(window: &tauri::Window, enabled: bool, _dark: bool) -> Result<()
     if enabled {
         // UnderWindowBackground is the material meant for a whole-window
         // backdrop; Sidebar/HudWindow are for panels drawn on top of content.
-        apply_vibrancy(window, NSVisualEffectMaterial::UnderWindowBackground, None, None)
-            .map_err(|e| e.to_string())
+        apply_vibrancy(
+            window,
+            NSVisualEffectMaterial::UnderWindowBackground,
+            None,
+            None,
+        )
+        .map_err(|e| e.to_string())
     } else {
-        clear_vibrancy(window).map(|_| ()).map_err(|e| e.to_string())
+        clear_vibrancy(window)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 }
 
