@@ -115,6 +115,16 @@ actor Engine {
     private let fimSuffixIds: [Int]
     private let fimMiddleIds: [Int]
 
+    // Serializes generation. InferenceManager is a single mutable resource
+    // (a plain class, not actor-isolated), and this actor's own suspension
+    // points make it reentrant: two overlapping requests would otherwise both
+    // enter InferenceManager.generateResponse concurrently, and the second
+    // would hit its internal "busy" guard and get back a fabricated
+    // near-empty completion instead of a real one. Callers queue here and are
+    // served strictly one at a time.
+    private var isGenerating = false
+    private var pendingWaiters: [CheckedContinuation<Void, Never>] = []
+
     init(modelDir: String, maxTokensCap: Int, maxNewlines: Int) async throws {
         let metaPath = (modelDir as NSString).appendingPathComponent("meta.yaml")
         let config = try YAMLConfig.load(from: metaPath)
@@ -200,7 +210,37 @@ actor Engine {
         return tokenizer.applyChatTemplate(input: chat, addGenerationPrompt: true)
     }
 
+    /// Public entry point: waits for any in-flight generation to finish,
+    /// runs this request, then hands the slot to the next waiter (if any).
     func generate(request: ChatRequest) async throws -> GenerationResult {
+        await acquireSlot()
+        defer { releaseSlot() }
+        return try await performGenerate(request: request)
+    }
+
+    private func acquireSlot() async {
+        guard isGenerating else {
+            isGenerating = true
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            pendingWaiters.append(continuation)
+        }
+    }
+
+    private func releaseSlot() {
+        if pendingWaiters.isEmpty {
+            isGenerating = false
+        } else {
+            // Hand the slot directly to the next waiter; isGenerating stays
+            // true so a request arriving in this instant still queues behind
+            // it instead of racing it for the slot.
+            let next = pendingWaiters.removeFirst()
+            next.resume()
+        }
+    }
+
+    private func performGenerate(request: ChatRequest) async throws -> GenerationResult {
         let maxTokens = min(request.maxTokens ?? request.maxCompletionTokens ?? 256, maxTokensCap)
         let fim = fimCapable ? fimExtractor.extract(messages: request.messages) : nil
         let fimMode = fim != nil
