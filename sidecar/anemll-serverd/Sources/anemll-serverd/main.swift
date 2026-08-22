@@ -248,7 +248,7 @@ actor Engine {
         var tokens = buildTokens(request: request, fim: fim)
 
         // Left-truncate so prompt + generation fit the context window.
-        let promptBudget = contextLength - maxTokens - 8
+        let promptBudget = max(contextLength - maxTokens - 8, 0)
         if tokens.count > promptBudget {
             tokens = Array(tokens.suffix(promptBudget))
         }

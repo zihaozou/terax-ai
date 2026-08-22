@@ -71,7 +71,10 @@ fn find_bundled_serverd() -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         let binaries = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
         let target = option_env!("TAURI_ENV_TARGET_TRIPLE")?;
-        let candidate = binaries.join(format!("{filename}-{target}"));
+        let candidate = binaries.join(format!(
+            "{filename}-{target}{}",
+            std::env::consts::EXE_SUFFIX
+        ));
         return is_executable_candidate(&candidate).then_some(candidate);
     }
     None
