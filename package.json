@@ -104,7 +104,6 @@
     "sonner": "^2.0.8",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
-    "use-stick-to-bottom": "^1.1.6",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

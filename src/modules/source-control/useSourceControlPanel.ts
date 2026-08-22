@@ -797,5 +797,3 @@ export function useSourceControlPanel(
     push,
   };
 }
-
-// End of useSourceControlPanel — AI commit-message generation removed.

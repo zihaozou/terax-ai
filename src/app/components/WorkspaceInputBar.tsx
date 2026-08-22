@@ -98,7 +98,7 @@ export function WorkspaceInputBar({
   ) : null;
 
   return (
-    <div data-ai-input-bar data-state="open" className="terax-reveal">
+    <div data-state="open" className="terax-reveal">
       <div className="shrink-0 border-t border-border/60 bg-foreground/[0.02] px-3 py-2">
         <div className="flex flex-col gap-2 rounded-lg px-1 py-1">
           <div className="flex flex-wrap items-center gap-1.5">

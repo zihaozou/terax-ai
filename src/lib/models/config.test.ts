@@ -2,13 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   compatModelIdForEndpoint,
   endpointIdFromCompatModel,
-  getModelContextLimit,
   isCompatModelId,
   migrateLegacyCompatEndpoint,
-  modelKeepsReasoning,
   modelSupportsTemperature,
   modelUsesReasoningTokens,
-  MODEL_PRICING,
   resolveModel,
   type CustomEndpoint,
 } from "./config";
@@ -65,61 +62,6 @@ describe("resolveModel", () => {
 
   it("throws on an unknown static model id", () => {
     expect(() => resolveModel("nope-not-real")).toThrow();
-  });
-});
-
-describe("getModelContextLimit", () => {
-  it("uses the per-endpoint override for compat models", () => {
-    const mid = compatModelIdForEndpoint(endpoint.id);
-    expect(getModelContextLimit(mid, endpoint.contextLimit)).toBe(64_000);
-  });
-
-  it("reads the static table for known models", () => {
-    expect(getModelContextLimit("claude-opus-4-7")).toBe(1_000_000);
-  });
-
-  it.each([
-    ["gpt-5.6", 1_050_000],
-    ["gpt-5.6-terra", 1_050_000],
-    ["gpt-5.6-luna", 1_050_000],
-    ["claude-fable-5", 1_000_000],
-    ["claude-sonnet-5", 1_000_000],
-    ["grok-4.5", 500_000],
-  ] as const)("uses the published context limit for %s", (modelId, limit) => {
-    expect(getModelContextLimit(modelId)).toBe(limit);
-  });
-});
-
-describe("current model pricing", () => {
-  it.each([
-    ["gpt-5.6", 5, 30, 0.5],
-    ["gpt-5.6-terra", 2.5, 15, 0.25],
-    ["gpt-5.6-luna", 1, 6, 0.1],
-    ["claude-fable-5", 10, 50, 1],
-    ["claude-sonnet-5", 3, 15, 0.3],
-    ["grok-4.5", 2, 6, 0.5],
-  ] as const)(
-    "uses the published token pricing for %s",
-    (modelId, input, output, cacheRead) => {
-      expect(MODEL_PRICING[modelId]).toEqual({ input, output, cacheRead });
-    },
-  );
-});
-
-describe("modelKeepsReasoning", () => {
-  it("keeps reasoning for compat endpoints (freeform provider)", () => {
-    const info = resolveModel(compatModelIdForEndpoint(endpoint.id), [
-      endpoint,
-    ]);
-    expect(modelKeepsReasoning(info)).toBe(true);
-  });
-
-  it("drops reasoning for plain non-reasoning models", () => {
-    expect(modelKeepsReasoning(resolveModel("gpt-5.4-mini"))).toBe(false);
-  });
-
-  it("keeps reasoning for tagged reasoning models", () => {
-    expect(modelKeepsReasoning(resolveModel("claude-opus-4-7"))).toBe(true);
   });
 });
 

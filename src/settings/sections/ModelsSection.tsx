@@ -217,7 +217,7 @@ export function ModelsSection() {
     });
 
     // Drop the now-dead model id from favorites/recents before touching the
-    // selection, so the recents push from a selection reset can't race it.
+    // selection, so a stale id can't linger in the stored lists.
     const deadModelId = compatModelIdForEndpoint(id);
     const { favoriteModelIds, recentModelIds } = usePreferencesStore.getState();
     if (favoriteModelIds.includes(deadModelId)) {
