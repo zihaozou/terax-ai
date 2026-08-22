@@ -1,6 +1,6 @@
 # TERAX.md
 
-Terax loads `TERAX.md` from the workspace root as agent memory (similar to AGENTS.md / CLAUDE.md). This file is also the project's living architecture doc - read it before making changes.
+`TERAX.md` is the project's living architecture doc - read it before making changes. External coding agents (pi, Claude Code, etc.) pick up root-level memory files like this one by convention.
 
 ## Project
 
