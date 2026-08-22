@@ -176,6 +176,10 @@ export type Preferences = {
   editorCustomFormatCommand: string;
   lspActivation: Record<string, LspActivation>;
   lspCustomServers: LspCustomServer[];
+  /** Local ANE completion daemon Terax spawns on launch and kills on quit. */
+  sidecarEnabled: boolean;
+  sidecarModelDir: string;
+  sidecarPort: number;
 };
 
 export type EditorFormatter =
@@ -264,6 +268,9 @@ const KEY_EDITOR_FORMATTER_BY_LANG = "editorFormatterByLang";
 const KEY_EDITOR_CUSTOM_FORMAT_COMMAND = "editorCustomFormatCommand";
 const KEY_LSP_ACTIVATION = "lspActivation";
 const KEY_LSP_CUSTOM_SERVERS = "lspCustomServers";
+const KEY_SIDECAR_ENABLED = "sidecarEnabled";
+const KEY_SIDECAR_MODEL_DIR = "sidecarModelDir";
+const KEY_SIDECAR_PORT = "sidecarPort";
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 14;
 export const TERMINAL_FONT_SIZE_MIN = 8;
@@ -350,6 +357,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   editorCustomFormatCommand: "",
   lspActivation: {},
   lspCustomServers: [],
+  sidecarEnabled: false,
+  sidecarModelDir: "",
+  sidecarPort: 8100,
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -542,6 +552,12 @@ export async function loadPreferences(): Promise<Preferences> {
     lspCustomServers:
       get<LspCustomServer[]>(KEY_LSP_CUSTOM_SERVERS) ??
       DEFAULT_PREFERENCES.lspCustomServers,
+    sidecarEnabled:
+      get<boolean>(KEY_SIDECAR_ENABLED) ?? DEFAULT_PREFERENCES.sidecarEnabled,
+    sidecarModelDir:
+      get<string>(KEY_SIDECAR_MODEL_DIR) ?? DEFAULT_PREFERENCES.sidecarModelDir,
+    sidecarPort:
+      get<number>(KEY_SIDECAR_PORT) ?? DEFAULT_PREFERENCES.sidecarPort,
   };
 }
 
@@ -701,6 +717,21 @@ export async function setCustomEndpoints(
   value: CustomEndpoint[],
 ): Promise<void> {
   await writePref(KEY_CUSTOM_ENDPOINTS, value);
+}
+
+export async function setSidecarEnabled(value: boolean): Promise<void> {
+  await writePref(KEY_SIDECAR_ENABLED, value);
+}
+
+export async function setSidecarModelDir(value: string): Promise<void> {
+  await writePref(KEY_SIDECAR_MODEL_DIR, value);
+}
+
+export async function setSidecarPort(value: number): Promise<void> {
+  const clamped = Number.isFinite(value)
+    ? Math.min(65_535, Math.max(1, Math.round(value)))
+    : DEFAULT_PREFERENCES.sidecarPort;
+  await writePref(KEY_SIDECAR_PORT, clamped);
 }
 
 export async function setOpenrouterModelId(value: string): Promise<void> {
@@ -947,6 +978,9 @@ export async function onPreferencesChange(
     [KEY_CONFIRM_CLOSE_RUNNING_TERMINAL]: "confirmCloseRunningTerminal",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
+    [KEY_SIDECAR_ENABLED]: "sidecarEnabled",
+    [KEY_SIDECAR_MODEL_DIR]: "sidecarModelDir",
+    [KEY_SIDECAR_PORT]: "sidecarPort",
     [KEY_AGENT_NOTIFICATIONS]: "agentNotifications",
     [KEY_AGENT_LAUNCH_COMMANDS]: "agentLaunchCommands",
     [KEY_DEFAULT_WORKSPACE_ENV]: "defaultWorkspaceEnv",

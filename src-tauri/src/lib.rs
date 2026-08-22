@@ -1,7 +1,7 @@
 pub mod modules;
 
 use modules::{
-    agent, control, fs, git, history, lsp, net, pty, secrets, shell, vibrancy, workspace,
+    agent, control, fs, git, history, lsp, net, pty, secrets, shell, sidecar, vibrancy, workspace,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -244,6 +244,7 @@ pub fn run() {
         })
         .manage(LaunchDir(Mutex::new(cli_dir)))
         .manage(LaunchFiles(Mutex::new(launch.files)))
+        .manage(sidecar::SidecarState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_open,
             pty::pty_write,
@@ -329,6 +330,8 @@ pub fn run() {
             history::history_list,
             vibrancy::window_backdrop_kind,
             vibrancy::window_set_backdrop,
+            sidecar::sidecar_start,
+            sidecar::sidecar_stop,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -342,6 +345,9 @@ pub fn run() {
                     }
                     if let Some(state) = app.try_state::<control::ControlState>() {
                         state.shutdown();
+                    }
+                    if let Some(state) = app.try_state::<sidecar::SidecarState>() {
+                        state.kill_owned();
                     }
                 }
                 // macOS delivers "Open With" files here, not as argv (cold and

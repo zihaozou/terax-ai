@@ -64,6 +64,9 @@ import {
   setOpenaiCompatibleModelId,
   setOpenrouterModelId,
   setRecentModelIds,
+  setSidecarEnabled,
+  setSidecarModelDir,
+  setSidecarPort,
 } from "@/modules/settings/store";
 import {
   Add01Icon,
@@ -353,6 +356,8 @@ export function ModelsSection() {
         customEndpoints={customEndpoints}
       />
 
+      <SidecarBlock />
+
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <Label>Providers</Label>
@@ -536,6 +541,68 @@ function DefaultsBlock({
           configuredIds={configuredIds}
           customEndpoints={customEndpoints}
         />
+      </div>
+    </div>
+  );
+}
+
+function SidecarBlock() {
+  const enabled = usePreferencesStore((s) => s.sidecarEnabled);
+  const modelDir = usePreferencesStore((s) => s.sidecarModelDir);
+  const port = usePreferencesStore((s) => s.sidecarPort);
+
+  const [modelDirDraft, setModelDirDraft] = useState(modelDir);
+  const [portDraft, setPortDraft] = useState(String(port));
+
+  useEffect(() => setModelDirDraft(modelDir), [modelDir]);
+  useEffect(() => setPortDraft(String(port)), [port]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Label>Local model server</Label>
+      <div className="flex flex-col gap-2.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5">
+        <FieldRow label="Enable">
+          <Switch
+            checked={enabled}
+            onCheckedChange={(v) => void setSidecarEnabled(v)}
+          />
+        </FieldRow>
+        {enabled ? (
+          <>
+            <FieldRow label="Model dir">
+              <Input
+                value={modelDirDraft}
+                onChange={(e) => setModelDirDraft(e.target.value)}
+                onBlur={() => {
+                  const v = modelDirDraft.trim();
+                  if (v !== modelDir) void setSidecarModelDir(v);
+                }}
+                placeholder="/Users/you/anemll/qwen25-coder-05b-ctx2048-argmax"
+                spellCheck={false}
+                className="h-8 font-mono text-[11.5px]"
+              />
+            </FieldRow>
+            <FieldRow label="Port">
+              <Input
+                value={portDraft}
+                onChange={(e) => setPortDraft(e.target.value)}
+                onBlur={() => {
+                  const v = parseInt(portDraft, 10);
+                  if (Number.isFinite(v)) void setSidecarPort(v);
+                  else setPortDraft(String(port));
+                }}
+                placeholder="8100"
+                spellCheck={false}
+                className="h-8 w-24 font-mono text-[11.5px]"
+              />
+            </FieldRow>
+            <span className="text-[10.5px] leading-relaxed text-muted-foreground">
+              Terax spawns and manages this server itself — point it at a
+              directory containing an Anemll <code>meta.yaml</code> and compiled
+              models.
+            </span>
+          </>
+        ) : null}
       </div>
     </div>
   );

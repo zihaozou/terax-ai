@@ -99,6 +99,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { error as logSidecarError } from "@tauri-apps/plugin-log";
 import type { SearchAddon } from "@xterm/addon-search";
 import {
   useCallback,
@@ -165,6 +166,28 @@ export default function App() {
   useEffect(() => {
     void initPrefs();
   }, [initPrefs]);
+
+  // Spawn the local ANE completion sidecar once preferences are hydrated and
+  // the user has opted in. Terax owns this child process for its own
+  // lifetime; see src-tauri/src/modules/sidecar.rs for the spawn/kill side.
+  const sidecarHydrated = usePreferencesStore((s) => s.hydrated);
+  const sidecarEnabled = usePreferencesStore((s) => s.sidecarEnabled);
+  const sidecarModelDir = usePreferencesStore((s) => s.sidecarModelDir);
+  const sidecarPort = usePreferencesStore((s) => s.sidecarPort);
+  const sidecarStarted = useRef(false);
+  useEffect(() => {
+    if (!sidecarHydrated || sidecarStarted.current) return;
+    if (!sidecarEnabled || !sidecarModelDir.trim()) return;
+    sidecarStarted.current = true;
+    invoke("sidecar_start", {
+      modelDir: sidecarModelDir,
+      port: sidecarPort,
+      maxTokens: 48,
+      maxNewlines: 5,
+    }).catch((err) => {
+      void logSidecarError(`[sidecar] failed to start anemll-serverd: ${err}`);
+    });
+  }, [sidecarHydrated, sidecarEnabled, sidecarModelDir, sidecarPort]);
 
   // Mirror `tabs` into a ref so callbacks scheduled with `setTimeout`
   // (e.g. cdInNewTab) read the latest pane state instead of a stale closure.
