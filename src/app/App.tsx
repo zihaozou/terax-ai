@@ -157,6 +157,15 @@ export default function App() {
     resetWorkspace,
   } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined);
 
+  // Hydrate the cross-window preference store. This is the main window's only
+  // unconditional hydration point — without it every usePreferencesStore
+  // consumer (autocomplete, explorer decorations, editor prefs…) runs on
+  // compile-time defaults forever.
+  const initPrefs = usePreferencesStore((s) => s.init);
+  useEffect(() => {
+    void initPrefs();
+  }, [initPrefs]);
+
   // Mirror `tabs` into a ref so callbacks scheduled with `setTimeout`
   // (e.g. cdInNewTab) read the latest pane state instead of a stale closure.
   const tabsRef = useRef(tabs);
