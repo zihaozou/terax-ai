@@ -385,14 +385,12 @@ function createSlot(): Slot {
       return false;
     }
     if (isMacKittyPaste(event, slot.term)) {
-      if (event.type === "keydown") {
-        const targetLeafId = slot.currentLeafId;
-        void readTerminalClipboard().then((text) => {
-          if (text && slot.currentLeafId === targetLeafId)
-            slot.term.paste(text);
-        });
-      }
-      event.preventDefault();
+      // Skip xterm so it does not CSI-u encode Cmd+V to the PTY, but do NOT
+      // preventDefault: xterm returns false here without preventing the
+      // default, so WKWebView's native paste command runs and fires a DOM
+      // paste event into the textarea (→ xterm → PTY). Being a user-intent
+      // paste, it avoids the macOS cross-app clipboard authorization popup
+      // that a programmatic navigator.clipboard.readText() would trigger.
       return false;
     }
     if (isTerminalCopy(event)) {
