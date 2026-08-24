@@ -371,6 +371,30 @@ function createSlot(): Slot {
       if (event.type === "keydown") bridge.writeToPty("\x1b\r");
       return false;
     }
+    // On macOS Cmd+C/Cmd+V normally reach WKWebView's native clipboard
+    // (the custom handler returns true). Once an app negotiates the kitty
+    // keyboard protocol, xterm encodes every modified keydown — Cmd+C/V
+    // included — as a CSI-u sequence to the PTY and preventDefaults it, so
+    // native copy/paste no longer fires. Intercept them here in that mode.
+    if (isMacKittyCopy(event, slot.term)) {
+      if (event.type === "keydown" && slot.term.hasSelection()) {
+        const sel = slot.term.getSelection();
+        if (sel) void writeTerminalClipboard(sel);
+      }
+      event.preventDefault();
+      return false;
+    }
+    if (isMacKittyPaste(event, slot.term)) {
+      if (event.type === "keydown") {
+        const targetLeafId = slot.currentLeafId;
+        void readTerminalClipboard().then((text) => {
+          if (text && slot.currentLeafId === targetLeafId)
+            slot.term.paste(text);
+        });
+      }
+      event.preventDefault();
+      return false;
+    }
     if (isTerminalCopy(event)) {
       if (event.type === "keydown" && slot.term.hasSelection()) {
         const sel = slot.term.getSelection();
@@ -1210,6 +1234,30 @@ function isShiftEnter(e: KeyboardEvent): boolean {
   return (
     e.key === "Enter" && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
   );
+}
+
+function isMacCmdKey(e: KeyboardEvent, letter: "c" | "v"): boolean {
+  return (
+    IS_MAC &&
+    e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.shiftKey &&
+    (e.code === `Key${letter.toUpperCase()}` ||
+      e.key === letter ||
+      e.key === letter.toUpperCase())
+  );
+}
+
+// Cmd+C on macOS while the kitty keyboard protocol is active, which would
+// otherwise be CSI-u encoded to the PTY instead of copying the selection.
+function isMacKittyCopy(e: KeyboardEvent, term: Terminal): boolean {
+  return kittyKeyboardActive(term) && isMacCmdKey(e, "c");
+}
+
+// Cmd+V counterpart of isMacKittyCopy.
+function isMacKittyPaste(e: KeyboardEvent, term: Terminal): boolean {
+  return kittyKeyboardActive(term) && isMacCmdKey(e, "v");
 }
 
 // True when the terminal is both configured for and actively running the
