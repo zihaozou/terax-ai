@@ -8,9 +8,11 @@ import { useEffect, useRef } from "react";
 import { activeSpaceEnv } from "./activeSpace";
 import { freshTerminalTab, hydrateTabs } from "./serialize";
 import {
+  hasUsableSpaceRoot,
   migrateSpaceRoots,
   SPACE_SCHEMA_VERSION,
   type SpaceRootIssues,
+  validatePersistedSpaceRoots,
 } from "./spaceRoot";
 import {
   loadAll,
@@ -31,6 +33,15 @@ type Params = {
   setActiveSpaceForNewTabs: (id: string) => void;
   adoptWorkspaceEnv: (env: WorkspaceEnv) => Promise<string | null>;
 };
+
+async function validateSpaceRoot(
+  candidate: string,
+  env: WorkspaceEnv,
+): Promise<string> {
+  const root = await native.canonicalize(candidate, env);
+  await native.workspaceAuthorize(root, env);
+  return root;
+}
 
 function uniqueCwds(tabs: Tab[]): string[] {
   const set = new Set<string>();
@@ -80,8 +91,7 @@ export function useSpacesBoot({
           let rootIssues: SpaceRootIssues = {};
           if (candidate) {
             try {
-              root = await native.canonicalize(candidate);
-              await native.workspaceAuthorize(root);
+              root = await validateSpaceRoot(candidate, env);
             } catch (error) {
               rootIssues = {
                 [DEFAULT_SPACE_ID]: {
@@ -124,12 +134,7 @@ export function useSpacesBoot({
           const migration = await migrateSpaceRoots(
             loaded,
             (env) => adoptWorkspaceEnv(env),
-            async (candidate, env) => {
-              await adoptWorkspaceEnv(env);
-              const root = await native.canonicalize(candidate);
-              await native.workspaceAuthorize(root);
-              return root;
-            },
+            validateSpaceRoot,
           );
           spaces = migration.spaces;
           rootIssues = migration.issues;
@@ -137,6 +142,11 @@ export function useSpacesBoot({
             await saveSpacesList(spaces);
           }
           await saveSchemaVersion(SPACE_SCHEMA_VERSION);
+        } else {
+          rootIssues = await validatePersistedSpaceRoots(
+            spaces,
+            validateSpaceRoot,
+          );
         }
 
         const restored: Tab[] = [];
@@ -155,13 +165,12 @@ export function useSpacesBoot({
         const env = activeSpaceEnv(spaces, active);
         await adoptWorkspaceEnv(env);
 
+        const activeSpace = spaces.find((space) => space.id === active);
         if (
-          !rootIssues[active] &&
+          hasUsableSpaceRoot(activeSpace, rootIssues) &&
           !restored.some((t) => t.spaceId === active)
         ) {
-          const root =
-            spaces.find((space) => space.id === active)?.root ?? null;
-          restored.push(freshTerminalTab(active, root, allocId));
+          restored.push(freshTerminalTab(active, activeSpace.root, allocId));
         }
 
         await Promise.allSettled(

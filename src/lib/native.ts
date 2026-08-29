@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import {
+  currentWorkspaceEnv,
+  type WorkspaceEnv,
+} from "@/modules/workspace";
 
 export type ReadResult =
   | { kind: "text"; content: string; size: number }
@@ -138,10 +141,13 @@ export type GitBranchListResult = {
 
 export const native = {
   workspaceCurrentDir: () => invoke<string>("workspace_current_dir"),
-  workspaceAuthorize: (path: string) =>
+  workspaceAuthorize: (
+    path: string,
+    workspace: WorkspaceEnv = currentWorkspaceEnv(),
+  ) =>
     invoke<string>("workspace_authorize", {
       path,
-      workspace: currentWorkspaceEnv(),
+      workspace,
     }),
   readFile: (path: string) =>
     invoke<ReadResult>("fs_read_file", {
@@ -154,10 +160,13 @@ export const native = {
       content,
       workspace: currentWorkspaceEnv(),
     }),
-  canonicalize: (path: string) =>
+  canonicalize: (
+    path: string,
+    workspace: WorkspaceEnv = currentWorkspaceEnv(),
+  ) =>
     invoke<string>("fs_canonicalize", {
       path,
-      workspace: currentWorkspaceEnv(),
+      workspace,
     }),
   createFile: (path: string) =>
     invoke<void>("fs_create_file", { path, workspace: currentWorkspaceEnv() }),

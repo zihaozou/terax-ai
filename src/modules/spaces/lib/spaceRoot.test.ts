@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasUsableSpaceRoot,
   legacyRootCandidate,
   migrateSpaceRoots,
+  validatePersistedSpaceRoots,
 } from "@/modules/spaces/lib/spaceRoot";
 import type {
   LoadedSpaces,
@@ -114,6 +116,26 @@ describe("migrateSpaceRoots", () => {
     });
   });
 
+  it("passes each Space env to root validation", async () => {
+    const env = { kind: "wsl", distro: "Ubuntu" } as const;
+    const calls: Array<{ path: string; env: SpaceMeta["env"] }> = [];
+    await migrateSpaceRoots(
+      {
+        schemaVersion: 1,
+        activeId: "space",
+        spaces: [space({ root: "/home/me/project", env })],
+        states: new Map(),
+      },
+      async () => null,
+      async (path, validationEnv) => {
+        calls.push({ path, env: validationEnv });
+        return path;
+      },
+    );
+
+    expect(calls).toEqual([{ path: "/home/me/project", env }]);
+  });
+
   it("preserves a terminal candidate when validation fails", async () => {
     const loaded: LoadedSpaces = {
       schemaVersion: 1,
@@ -134,5 +156,42 @@ describe("migrateSpaceRoots", () => {
       candidate: "/unavailable",
       message: "not found",
     });
+  });
+});
+
+describe("validatePersistedSpaceRoots", () => {
+  it("reconstructs unavailable state from schema-v2 roots without terminal cwd", async () => {
+    const unavailable = space({
+      id: "unavailable",
+      root: "/missing",
+      env: { kind: "wsl", distro: "Ubuntu" },
+    });
+    const noRoot = space({ id: "no-root", root: null });
+    const calls: Array<{ path: string; env: SpaceMeta["env"] }> = [];
+    const issues = await validatePersistedSpaceRoots(
+      [unavailable, noRoot],
+      async (path, env) => {
+        calls.push({ path, env });
+        throw new Error("not found");
+      },
+    );
+
+    expect(calls).toEqual([{ path: "/missing", env: unavailable.env }]);
+    expect(issues).toEqual({
+      unavailable: { candidate: "/missing", message: "not found" },
+      "no-root": { candidate: null, message: "No directory is available" },
+    });
+  });
+});
+
+describe("hasUsableSpaceRoot", () => {
+  it("does not create a fresh terminal for an unavailable active root", () => {
+    const unavailable = space({ root: "/missing" });
+    expect(
+      hasUsableSpaceRoot(unavailable, {
+        space: { candidate: "/missing", message: "not found" },
+      }),
+    ).toBe(false);
+    expect(hasUsableSpaceRoot(space({ root: "/project" }), {})).toBe(true);
   });
 });

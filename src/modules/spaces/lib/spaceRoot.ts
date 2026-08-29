@@ -20,6 +20,51 @@ export type RootMigrationResult = {
   issues: SpaceRootIssues;
 };
 
+type ValidateRoot = (
+  path: string,
+  env: WorkspaceEnv,
+) => Promise<string>;
+
+function rootIssue(candidate: string | null, error?: unknown): SpaceRootIssue {
+  return {
+    candidate,
+    message:
+      error === undefined
+        ? "No directory is available"
+        : error instanceof Error
+          ? error.message
+          : String(error),
+  };
+}
+
+export function hasUsableSpaceRoot(
+  space: SpaceMeta | undefined,
+  issues: SpaceRootIssues,
+): space is SpaceMeta & { root: string } {
+  if (!space?.root?.trim()) return false;
+  return !issues[space.id];
+}
+
+export async function validatePersistedSpaceRoots(
+  spaces: SpaceMeta[],
+  validateRoot: ValidateRoot,
+): Promise<SpaceRootIssues> {
+  const issues: SpaceRootIssues = {};
+  for (const space of spaces) {
+    const candidate = space.root?.trim() || null;
+    if (!candidate) {
+      issues[space.id] = rootIssue(null);
+      continue;
+    }
+    try {
+      await validateRoot(candidate, space.env);
+    } catch (error) {
+      issues[space.id] = rootIssue(candidate, error);
+    }
+  }
+  return issues;
+}
+
 function activeLeafCwd(node: SerializedNode): string | null {
   if (node.kind === "leaf") return node.active && node.cwd ? node.cwd : null;
   for (const child of node.children) {
@@ -59,7 +104,7 @@ export function legacyRootCandidate(
 export async function migrateSpaceRoots(
   loaded: LoadedSpaces,
   resolveHome: (env: WorkspaceEnv) => Promise<string | null>,
-  validateRoot: (path: string, env: WorkspaceEnv) => Promise<string>,
+  validateRoot: ValidateRoot,
 ): Promise<RootMigrationResult> {
   const issues: SpaceRootIssues = {};
   const spaces: SpaceMeta[] = [];
@@ -68,10 +113,7 @@ export async function migrateSpaceRoots(
     const candidate =
       legacyRootCandidate(space, state, null) ?? (await resolveHome(space.env));
     if (!candidate) {
-      issues[space.id] = {
-        candidate: null,
-        message: "No directory is available",
-      };
+      issues[space.id] = rootIssue(null);
       spaces.push(space);
       continue;
     }
@@ -79,10 +121,7 @@ export async function migrateSpaceRoots(
       const root = await validateRoot(candidate, space.env);
       spaces.push(root === space.root ? space : { ...space, root });
     } catch (error) {
-      issues[space.id] = {
-        candidate,
-        message: error instanceof Error ? error.message : String(error),
-      };
+      issues[space.id] = rootIssue(candidate, error);
       spaces.push(
         candidate === space.root ? space : { ...space, root: candidate },
       );
