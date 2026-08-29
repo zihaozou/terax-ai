@@ -1,3 +1,4 @@
+import { activateControlFileNavigation } from "@/app/lib/controlFileNavigation";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -56,12 +57,14 @@ import {
 } from "@/modules/source-control";
 import {
   createSpaceController,
+  SpaceDirectoryPicker,
   SpaceSwitcher,
   useSpacePersistence,
   useSpaces,
   useSpacesBoot,
   validateSpaceRoot,
 } from "@/modules/spaces";
+import { deleteSpaceAfterActivation } from "@/modules/spaces/lib/spaceDeletion";
 import { StatusBar } from "@/modules/statusbar";
 import {
   type CloseTabsPlan,
@@ -110,14 +113,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { activateControlFileNavigation } from "@/app/lib/controlFileNavigation";
-import { deleteSpaceAfterActivation } from "@/modules/spaces/lib/spaceDeletion";
 import { CloseDialogs } from "./components/CloseDialogs";
 import { WorkspaceInputBar } from "./components/WorkspaceInputBar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { useAppCloseGuard } from "./hooks/useAppCloseGuard";
 import { useTabCloseGuards } from "./hooks/useTabCloseGuards";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
+
+type PickerRequest =
+  | {
+      mode: "change-root";
+      spaceId: string;
+      env: WorkspaceEnv;
+      initialPath: string;
+    }
+  | { mode: "create-space"; env: WorkspaceEnv; initialPath: string };
 
 export default function App() {
   const {
@@ -158,7 +168,6 @@ export default function App() {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
-    resetWorkspace,
   } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined);
 
   // Hydrate the cross-window preference store. This is the main window's only
@@ -223,33 +232,16 @@ export default function App() {
   // split/unsplit re-mount components but the leaf is still live.
   const liveLeavesRef = useRef<Set<number>>(new Set());
 
-  const clearWorkspaceState = useCallback(() => {
-    for (const id of liveLeavesRef.current) disposeSession(id);
-    searchAddons.current.clear();
-    terminalRefs.current.clear();
-    editorRefs.current.clear();
-    previewRefs.current.clear();
-    setActiveSearchAddon(null);
-    setActiveEditorHandle(null);
-  }, []);
-
   const workspaceEnv = useWorkspaceEnvStore((s) => s.env);
   const setWorkspaceEnv = useWorkspaceEnvStore((s) => s.setEnv);
   const {
     home,
     launchCwd,
     launchCwdResolved,
-    switchWorkspace,
     prepareWorkspaceEnv,
     applyWorkspaceEnv,
     adoptWorkspaceEnv,
-  } = useWorkspaceSwitcher({
-    tabsRef,
-    workspaceEnv,
-    setWorkspaceEnv,
-    resetWorkspace,
-    clearWorkspaceState,
-  });
+  } = useWorkspaceSwitcher({ setWorkspaceEnv });
 
   const activeSpaceId = useSpaces((s) => s.activeId);
   const activeSpace = useSpaces(
@@ -267,13 +259,6 @@ export default function App() {
     activeSpaceIdRef.current = activeSpaceId;
   }, [tabs, activeId, activeSpaceId]);
   const sourceControlSpaceId = activeSpaceId ?? DEFAULT_SPACE_ID;
-
-  const handleWorkspaceChange = useCallback(
-    async (env: WorkspaceEnv) => {
-      await switchWorkspace(env);
-    },
-    [switchWorkspace],
-  );
 
   useSpacesBoot({
     ready: launchCwdResolved,
@@ -328,6 +313,62 @@ export default function App() {
   );
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [pickerRequest, setPickerRequest] = useState<PickerRequest | null>(
+    null,
+  );
+
+  const openCreateSpacePicker = useCallback(
+    async (env: WorkspaceEnv) => {
+      try {
+        const initialPath = await spaceController.homeForEnv(env);
+        setPickerRequest({ mode: "create-space", env, initialPath });
+      } catch (error) {
+        window.alert(`Unable to prepare Space environment: ${String(error)}`);
+      }
+    },
+    [spaceController],
+  );
+
+  const openChangeRootPicker = useCallback(async () => {
+    if (!activeSpace) return;
+    try {
+      const initialPath =
+        activeSpaceRoot ??
+        activeRootIssue?.candidate ??
+        (await spaceController.homeForEnv(activeSpace.env));
+      setPickerRequest({
+        mode: "change-root",
+        spaceId: activeSpace.id,
+        env: activeSpace.env,
+        initialPath,
+      });
+    } catch (error) {
+      window.alert(`Unable to prepare folder picker: ${String(error)}`);
+    }
+  }, [
+    activeRootIssue?.candidate,
+    activeSpace,
+    activeSpaceRoot,
+    spaceController,
+  ]);
+
+  const handlePickerSelect = useCallback(
+    (path: string) => {
+      const request = pickerRequest;
+      if (!request) return;
+      setPickerRequest(null);
+      if (request.mode === "change-root") {
+        void spaceController.changeRoot(request.spaceId, path);
+        return;
+      }
+      const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
+      const name =
+        segments[segments.length - 1] ??
+        `Space ${useSpaces.getState().spaces.length + 1}`;
+      void spaceController.create({ name, root: path, env: request.env });
+    },
+    [pickerRequest, spaceController],
+  );
 
   const spaceTabs = useMemo(
     () => tabs.filter((t) => t.spaceId === (activeSpaceId ?? DEFAULT_SPACE_ID)),
@@ -1031,14 +1072,9 @@ export default function App() {
   const activeCwd = activeTerminalLeafCwd;
 
   const handleNewSpace = useCallback(() => {
-    if (!activeSpace || !activeSpaceRoot || activeRootIssue) return;
-    const name = `Space ${useSpaces.getState().spaces.length + 1}`;
-    void spaceController.create({
-      name,
-      root: activeSpaceRoot,
-      env: activeSpace.env,
-    });
-  }, [activeRootIssue, activeSpace, activeSpaceRoot, spaceController]);
+    if (!activeSpace) return;
+    void openCreateSpacePicker(activeSpace.env);
+  }, [activeSpace, openCreateSpacePicker]);
 
   const handleDeleteSpace = useCallback(
     (id: string) => {
@@ -1395,13 +1431,16 @@ export default function App() {
 
           {!zenMode && (
             <StatusBar
-              cwd={activeSpaceRoot}
+              root={activeSpaceRoot}
               home={home}
-              onCd={(path) => {
+              issue={activeRootIssue}
+              env={activeSpace?.env ?? null}
+              onChangeRoot={(path) => {
                 if (activeSpace)
                   void spaceController.changeRoot(activeSpace.id, path);
               }}
-              onWorkspaceChange={handleWorkspaceChange}
+              onChooseFolder={() => void openChangeRootPicker()}
+              onCreateInEnv={(env) => void openCreateSpacePicker(env)}
               privateActive={
                 activeTab?.kind === "terminal" && activeTab.private === true
               }
@@ -1439,6 +1478,17 @@ export default function App() {
           />
 
           <UpdaterDialog />
+
+          {pickerRequest ? (
+            <SpaceDirectoryPicker
+              open
+              env={pickerRequest.env}
+              initialPath={pickerRequest.initialPath}
+              mode={pickerRequest.mode}
+              onCancel={() => setPickerRequest(null)}
+              onSelect={handlePickerSelect}
+            />
+          ) : null}
 
           <CloseDialogs
             tabs={tabs}

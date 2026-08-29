@@ -1,13 +1,12 @@
-import { type RefObject, useCallback, useEffect, useState } from "react";
-import { homeDir } from "@tauri-apps/api/path";
 import { native } from "@/lib/native";
 import type { PreparedWorkspace } from "@/modules/spaces";
-import type { Tab } from "@/modules/tabs";
 import {
   getWslHome,
   LOCAL_WORKSPACE,
   type WorkspaceEnv,
 } from "@/modules/workspace";
+import { homeDir } from "@tauri-apps/api/path";
+import { useCallback, useEffect, useState } from "react";
 
 async function resolveEnvHome(env: WorkspaceEnv): Promise<string> {
   return env.kind === "wsl"
@@ -16,21 +15,10 @@ async function resolveEnvHome(env: WorkspaceEnv): Promise<string> {
 }
 
 type Params = {
-  tabsRef: RefObject<Tab[]>;
-  workspaceEnv: WorkspaceEnv;
   setWorkspaceEnv: (env: WorkspaceEnv) => void;
-  resetWorkspace: (home?: string) => void;
-  /** Dispose live sessions and clear App-owned pane/handle ref maps. */
-  clearWorkspaceState: () => void;
 };
 
-export function useWorkspaceSwitcher({
-  tabsRef,
-  workspaceEnv,
-  setWorkspaceEnv,
-  resetWorkspace,
-  clearWorkspaceState,
-}: Params) {
+export function useWorkspaceSwitcher({ setWorkspaceEnv }: Params) {
   const [home, setHome] = useState<string | null>(null);
   const [launchCwd, setLaunchCwd] = useState<string | null>(null);
   const [launchCwdResolved, setLaunchCwdResolved] = useState(false);
@@ -75,46 +63,6 @@ export function useWorkspaceSwitcher({
     [setWorkspaceEnv],
   );
 
-  const switchWorkspace = useCallback(
-    async (env: WorkspaceEnv): Promise<boolean> => {
-      if (
-        env.kind === workspaceEnv.kind &&
-        (env.kind === "local" ||
-          (workspaceEnv.kind === "wsl" && env.distro === workspaceEnv.distro))
-      ) {
-        return false;
-      }
-      const dirty = tabsRef.current.some((t) => t.kind === "editor" && t.dirty);
-      if (dirty) {
-        window.alert(
-          "Save or close unsaved editor tabs before switching workspace.",
-        );
-        return false;
-      }
-
-      let prepared: PreparedWorkspace;
-      try {
-        prepared = await prepareWorkspaceEnv(env);
-      } catch (error) {
-        window.alert(String(error));
-        return false;
-      }
-
-      clearWorkspaceState();
-      applyWorkspaceEnv(prepared);
-      resetWorkspace(prepared.home);
-      return true;
-    },
-    [
-      workspaceEnv,
-      resetWorkspace,
-      tabsRef,
-      clearWorkspaceState,
-      prepareWorkspaceEnv,
-      applyWorkspaceEnv,
-    ],
-  );
-
   const adoptWorkspaceEnv = useCallback(
     async (env: WorkspaceEnv): Promise<string | null> => {
       try {
@@ -132,7 +80,6 @@ export function useWorkspaceSwitcher({
     home,
     launchCwd,
     launchCwdResolved,
-    switchWorkspace,
     prepareWorkspaceEnv,
     applyWorkspaceEnv,
     adoptWorkspaceEnv,
