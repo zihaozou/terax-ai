@@ -13,4 +13,5 @@ export { useSpacePersistence } from "./lib/useSpacePersistence";
 export { useSpaces } from "./lib/useSpaces";
 export { useSpacesBoot } from "./lib/useSpacesBoot";
 export { SpaceAvatar } from "./SpaceAvatar";
+export { SpaceRootRecovery } from "./components/SpaceRootRecovery";
 export { SpaceSwitcher } from "./SpaceSwitcher";

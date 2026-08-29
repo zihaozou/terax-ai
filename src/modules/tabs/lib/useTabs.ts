@@ -19,6 +19,8 @@ import {
   swapLeafInDirection,
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
+import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
+import { canWarmTab } from "./tabWarmPolicy";
 import {
   useCallback,
   useEffect,
@@ -580,7 +582,10 @@ export function planTerminalPaneSplit(
   };
 }
 
-export function useTabs(initial?: Partial<TerminalTab>) {
+export function useTabs(
+  initial?: Partial<TerminalTab>,
+  rootIssues: SpaceRootIssues = {},
+) {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const tabId = 1;
     const leafId = 2;
@@ -618,10 +623,10 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     if (!booted) return;
     setTabs((curr) => {
       const t = curr.find((x) => x.id === activeId);
-      if (!t?.cold) return curr;
+      if (!t?.cold || !canWarmTab(t, rootIssues)) return curr;
       return curr.map((x) => (x.id === activeId ? { ...x, cold: false } : x));
     });
-  }, [activeId, booted]);
+  }, [activeId, booted, rootIssues]);
 
   const allocId = useCallback(() => nextIdRef.current++, []);
 

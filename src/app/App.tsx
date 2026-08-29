@@ -59,6 +59,7 @@ import {
 import {
   createSpaceController,
   SpaceDirectoryPicker,
+  SpaceRootRecovery,
   SpaceSwitcher,
   useSpacePersistence,
   useSpaces,
@@ -133,6 +134,8 @@ type PickerRequest =
   | { mode: "create-space"; env: WorkspaceEnv; initialPath: string };
 
 export default function App() {
+  const rootIssues = useSpaces((state) => state.rootIssues);
+
   const {
     tabs,
     activeId,
@@ -171,7 +174,7 @@ export default function App() {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
-  } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined);
+  } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined, rootIssues);
 
   // Hydrate the cross-window preference store. This is the main window's only
   // unconditional hydration point — without it every usePreferencesStore
@@ -250,7 +253,6 @@ export default function App() {
     (state) =>
       state.spaces.find((space) => space.id === state.activeId) ?? null,
   );
-  const rootIssues = useSpaces((state) => state.rootIssues);
   const activeSpaceRoot = activeSpace?.root ?? null;
   const activeRootIssue = activeSpace ? rootIssues[activeSpace.id] : undefined;
   const spacesHydrated = useSpaces((s) => s.hydrated);
@@ -1383,20 +1385,30 @@ export default function App() {
                       className="min-h-0 flex-1 terax-panel-in"
                     >
                       {sidebarView === "explorer" ? (
-                        <FileExplorer
-                          ref={explorerRef}
-                          rootPath={explorerRoot}
-                          gitStatus={
-                            explorerGitDecorations ? sourceControl.status : null
-                          }
-                          activeFilePath={explorerActiveFilePath}
-                          onOpenFile={handleOpenFile}
-                          onPathRenamed={handlePathRenamed}
-                          onPathDeleted={handlePathDeleted}
-                          onOpenInNewSpace={handleOpenInNewSpace}
-                          onOpenGitHistory={handleOpenGitHistoryForPath}
-                          pathDropTarget={terminalPathDropTarget}
-                        />
+                        activeRootIssue && activeSpace ? (
+                          <SpaceRootRecovery
+                            space={activeSpace}
+                            issue={activeRootIssue}
+                            onChooseFolder={() => void openChangeRootPicker()}
+                          />
+                        ) : (
+                          <FileExplorer
+                            ref={explorerRef}
+                            rootPath={explorerRoot}
+                            gitStatus={
+                              explorerGitDecorations
+                                ? sourceControl.status
+                                : null
+                            }
+                            activeFilePath={explorerActiveFilePath}
+                            onOpenFile={handleOpenFile}
+                            onPathRenamed={handlePathRenamed}
+                            onPathDeleted={handlePathDeleted}
+                            onOpenInNewSpace={handleOpenInNewSpace}
+                            onOpenGitHistory={handleOpenGitHistoryForPath}
+                            pathDropTarget={terminalPathDropTarget}
+                          />
+                        )
                       ) : (
                         <SourceControlPanel
                           key={sourceControl.contextPath ?? "no-source-control"}
