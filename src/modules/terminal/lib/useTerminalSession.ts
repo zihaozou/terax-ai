@@ -25,7 +25,11 @@ import {
 } from "./osc-handlers";
 import { openPty, type PtySession } from "./pty-bridge";
 import "../block/block.css";
-import { ensureAgentActivityListener, isAgentActivePty } from "./agentActivity";
+import {
+  ensureAgentActivityListener,
+  isAgentActivePty,
+  useAgentActivityStore,
+} from "./agentActivity";
 import {
   acquireSlot,
   applyBackgroundActive,
@@ -378,6 +382,9 @@ configureRendererPool({
     const s = sessions.get(leafId);
     if (!s) return null;
     return {
+      agent: s.pty
+        ? useAgentActivityStore.getState().agents[s.pty.id]
+        : undefined,
       writeToPty: (data) => {
         // Shell spawn failed (bad cwd, missing binary): Enter retries.
         if (s.spawnFailed) {

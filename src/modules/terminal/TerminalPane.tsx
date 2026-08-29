@@ -52,7 +52,7 @@ export const TerminalPane = memo(
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const downYRef = useRef<number | null>(null);
+    const downPosRef = useRef<{ x: number; y: number } | null>(null);
     const { resolvedMode, activeTheme } = useTheme();
 
     const session = useTerminalSession({
@@ -103,13 +103,20 @@ export const TerminalPane = memo(
               ref={containerRef}
               className="absolute inset-0 z-0"
               onMouseDown={(e) => {
-                downYRef.current = e.clientY;
+                downPosRef.current = { x: e.clientX, y: e.clientY };
               }}
               onMouseUp={(e) => {
+                // Click-vs-drag must consider both axes: a same-row drag is
+                // horizontal, and treating it as a click would let
+                // selectBlockAt replace/clear the selection the user just made.
+                const down = downPosRef.current;
                 const moved =
-                  downYRef.current != null &&
-                  Math.abs(e.clientY - downYRef.current) > 4;
-                downYRef.current = null;
+                  down != null &&
+                  Math.max(
+                    Math.abs(e.clientX - down.x),
+                    Math.abs(e.clientY - down.y),
+                  ) > 4;
+                downPosRef.current = null;
                 if (!moved) session.selectBlockAt(e.clientY);
                 if (session.blockMode === "prompt") focusLeafInput(leafId);
               }}

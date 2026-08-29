@@ -698,8 +698,6 @@ export function modelUsesReasoningTokens(
   );
 }
 
-export const DEFAULT_MODEL_ID: ModelId = "gpt-5.4-mini";
-
 /** Providers that do not require an API key (local servers, key-optional). */
 export const KEYLESS_PROVIDERS: readonly ProviderId[] = [
   "lmstudio",

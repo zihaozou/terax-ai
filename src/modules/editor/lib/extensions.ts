@@ -2,7 +2,12 @@ import { detectMonoFontFamily } from "@/lib/fonts";
 import { indentUnit } from "@codemirror/language";
 import { lintGutter } from "@codemirror/lint";
 import { search } from "@codemirror/search";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import {
+  Compartment,
+  EditorState,
+  Prec,
+  type Extension,
+} from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { chromeTheme } from "./chromeTheme";
 
@@ -127,6 +132,19 @@ const SHARED_EXTENSIONS: readonly Extension[] = Object.freeze([
       borderColor: "var(--border)",
     },
   }),
+  // drawSelection paints the selection layer *behind* the content, so an
+  // opaque active-line background hides the selection on the cursor line.
+  // Every editor theme (@uiw createTheme lineHighlight, third-party themes)
+  // emits an opaque `.cm-activeLine` rule and mounts after the theme above,
+  // so this override needs Prec.highest to win the tie on specificity.
+  Prec.highest(
+    EditorView.theme({
+      ".cm-activeLine, .cm-lineNumbers .cm-activeLineGutter": {
+        backgroundColor:
+          "color-mix(in srgb, var(--foreground) 4%, transparent)",
+      },
+    }),
+  ),
 ]);
 
 export function buildSharedExtensions(): readonly Extension[] {

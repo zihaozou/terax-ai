@@ -3,6 +3,12 @@ export type TerminalPasteTarget = {
   focus: () => void;
 };
 
+export function macKittyPasteRoute(
+  agent: string | undefined,
+): "pty" | "native" {
+  return agent === "pi" ? "pty" : "native";
+}
+
 export function pasteIntoTerminal(
   terminal: TerminalPasteTarget | null,
   text: string,

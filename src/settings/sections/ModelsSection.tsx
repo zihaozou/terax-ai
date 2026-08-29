@@ -23,11 +23,9 @@ import {
   compatModelIdForEndpoint,
   getAutocompleteEligibleModels,
   getCompatModelInfo,
-  getModel,
   getProvider,
   isCompatModelId,
   MODELS,
-  type ModelId,
   PROVIDERS,
   type ProviderId,
   type ProviderInfo,
@@ -51,8 +49,6 @@ import {
   setAutocompleteProvider,
   setAutocompleteTrigger,
   setCustomEndpoints,
-  setDefaultModel,
-  setFavoriteModelIds,
   setLmstudioBaseURL,
   setLmstudioModelId,
   setMlxBaseURL,
@@ -63,7 +59,6 @@ import {
   setOpenaiCompatibleContextLimit,
   setOpenaiCompatibleModelId,
   setOpenrouterModelId,
-  setRecentModelIds,
   setSidecarEnabled,
   setSidecarModelDir,
   setSidecarPort,
@@ -144,7 +139,6 @@ export function ModelsSection() {
   const [epKeys, setEpKeys] = useState<CustomEndpointKeys>({});
   const [adding, setAdding] = useState<Set<ProviderId>>(new Set());
 
-  const defaultModel = usePreferencesStore((s) => s.defaultModelId);
   const lmstudioBaseURL = usePreferencesStore((s) => s.lmstudioBaseURL);
   const lmstudioModelId = usePreferencesStore((s) => s.lmstudioModelId);
   const mlxBaseURL = usePreferencesStore((s) => s.mlxBaseURL);
@@ -219,22 +213,10 @@ export function ModelsSection() {
       return next;
     });
 
-    // Drop the now-dead model id from favorites/recents before touching the
-    // selection, so a stale id can't linger in the stored lists.
-    const deadModelId = compatModelIdForEndpoint(id);
-    const { favoriteModelIds, recentModelIds } = usePreferencesStore.getState();
-    if (favoriteModelIds.includes(deadModelId)) {
-      await setFavoriteModelIds(
-        favoriteModelIds.filter((m) => m !== deadModelId),
-      );
-    }
-    if (recentModelIds.includes(deadModelId)) {
-      await setRecentModelIds(recentModelIds.filter((m) => m !== deadModelId));
-    }
-
     // If the deleted endpoint was the autocomplete model, the selection would
     // dangle. Fall back to another endpoint when one remains, else clear it so
     // autocomplete falls back to the provider default.
+    const deadModelId = compatModelIdForEndpoint(id);
     const remaining = customEndpoints.filter((e) => e.id !== id);
     const { autocompleteModelId } = usePreferencesStore.getState();
     if (autocompleteModelId === deadModelId) {
@@ -349,15 +331,6 @@ export function ModelsSection() {
         description="Connect the providers you use. Keys live in your OS keychain and are used only by Terax."
       />
 
-      <DefaultsBlock
-        defaultModel={defaultModel}
-        configuredIds={configuredIds}
-        keys={keys}
-        customEndpoints={customEndpoints}
-      />
-
-      <SidecarBlock />
-
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <Label>Providers</Label>
@@ -428,6 +401,14 @@ export function ModelsSection() {
           </div>
         )}
       </div>
+
+      <AutocompleteBlock
+        keys={keys}
+        configuredIds={configuredIds}
+        customEndpoints={customEndpoints}
+      />
+
+      <SidecarBlock />
     </div>
   );
 }
@@ -515,27 +496,19 @@ function ProviderMenuItem({
   );
 }
 
-function DefaultsBlock({
-  defaultModel,
-  configuredIds,
+function AutocompleteBlock({
   keys,
+  configuredIds,
   customEndpoints,
 }: {
-  defaultModel: ModelId;
-  configuredIds: Set<ProviderId>;
   keys: KeysMap;
+  configuredIds: Set<ProviderId>;
   customEndpoints: readonly CustomEndpoint[];
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <Label>Defaults</Label>
+      <Label>Autocomplete</Label>
       <div className="flex flex-col gap-2.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5">
-        <FieldRow label="Chat model">
-          <DefaultModelPicker
-            defaultModel={defaultModel}
-            configuredIds={configuredIds}
-          />
-        </FieldRow>
         <AutocompleteRow
           keys={keys}
           configuredIds={configuredIds}
@@ -559,7 +532,7 @@ function SidecarBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Label>Local model server</Label>
+      <Label>Local ANE completion</Label>
       <div className="flex flex-col gap-2.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5">
         <FieldRow label="Enable">
           <Switch
@@ -605,80 +578,6 @@ function SidecarBlock() {
         ) : null}
       </div>
     </div>
-  );
-}
-
-function DefaultModelPicker({
-  defaultModel,
-  configuredIds,
-}: {
-  defaultModel: ModelId;
-  configuredIds: Set<ProviderId>;
-}) {
-  const m = getModel(defaultModel);
-  const hasAny = configuredIds.size > 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          disabled={!hasAny}
-          className="h-8 flex-1 justify-between gap-2 px-2.5 text-[11.5px]"
-        >
-          <span className="flex items-center gap-2 truncate">
-            <ProviderIcon provider={m.provider} size={13} />
-            <span className="truncate">{m.label}</span>
-            <span className="text-muted-foreground">· {m.hint}</span>
-          </span>
-          <HugeiconsIcon
-            icon={ArrowDown01Icon}
-            size={11}
-            strokeWidth={2}
-            className="opacity-70"
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        collisionPadding={12}
-        className="min-w-70 p-1"
-      >
-        <div className="max-h-72 overflow-y-auto overscroll-contain pr-1">
-          {PROVIDERS.filter((p) => configuredIds.has(p.id)).map((p) => {
-            const models = MODELS.filter((x) => x.provider === p.id);
-            if (models.length === 0) return null;
-            return (
-              <div key={p.id} className="px-1 pt-1.5 first:pt-1">
-                <div className="mb-0.5 flex items-center gap-1.5 px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  <ProviderIcon provider={p.id} size={11} />
-                  <span>{p.label}</span>
-                </div>
-                {models.map((mod) => (
-                  <DropdownMenuItem
-                    key={mod.id}
-                    onSelect={() => void setDefaultModel(mod.id as ModelId)}
-                    className={cn(
-                      "flex items-start gap-2 text-[12px]",
-                      mod.id === defaultModel && "bg-accent/50",
-                    )}
-                  >
-                    <span className="flex flex-1 flex-col">
-                      <span>{mod.label}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {mod.description}
-                      </span>
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

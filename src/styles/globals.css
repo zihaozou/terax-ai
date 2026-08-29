@@ -145,7 +145,9 @@
   --terminal-foreground: var(--foreground);
   --terminal-cursor: var(--foreground);
   --terminal-cursor-accent: var(--background);
-  --terminal-selection: var(--accent);
+  /* xterm blends an opaque selectionBackground at 30% opacity; var(--accent)
+   * mixes to within a few levels of the background, so keep this translucent. */
+  --terminal-selection: rgba(0, 0, 0, 0.12);
   --terminal-ansi-black: #111111;
   --terminal-ansi-red: #c0392f;
   --terminal-ansi-green: #2f7d4f;
@@ -169,6 +171,7 @@
  * placeholder. An unscoped ANSI block would put dark colours on a white
  * terminal for every light-mode user. */
 .dark {
+  --terminal-selection: rgba(255, 255, 255, 0.16);
   --terminal-ansi-black: #3f3f3f;
   --terminal-ansi-red: #e35d5d;
   --terminal-ansi-green: #6ec48f;

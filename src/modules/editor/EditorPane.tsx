@@ -90,6 +90,13 @@ type Props = {
   onDirtyChange?: (dirty: boolean) => void;
   onSaved?: () => void;
   onClose?: () => void;
+  /**
+   * False while this pane sits in a hidden tab. Media previews are removed
+   * from the render tree then: WebKit keeps the native <video controls>
+   * compositor layer alive under mere `visibility: hidden`, leaving frosted
+   * control ghosts floating over the terminal on the transparent window.
+   */
+  visible?: boolean;
 };
 
 // Above this, syntax highlighting and LSP are disabled: a multi-MB lezer
@@ -106,7 +113,14 @@ function formatBytes(n: number): string {
 // skip re-rendering entirely when App re-renders (terminal events, tab churn).
 export const EditorPane = memo(
   forwardRef<EditorPaneHandle, Props>(function EditorPane(props, ref) {
-    const { path, overrideLanguage, onDirtyChange, onSaved, onClose } = props;
+    const {
+      path,
+      overrideLanguage,
+      onDirtyChange,
+      onSaved,
+      onClose,
+      visible = true,
+    } = props;
 
     const { doc, onChange, save, reload, adoptDiskText, openAnyway } =
       useDocument({
@@ -580,7 +594,10 @@ export const EditorPane = memo(
       if (isImage || isVideo || isAudio || isPdf) {
         const assetUrl = convertFileSrc(path);
         return (
-          <div className="flex h-full min-h-0 flex-col items-center justify-center bg-background p-4 overflow-auto">
+          <div
+            className="flex h-full min-h-0 flex-col items-center justify-center bg-background p-4 overflow-auto"
+            style={{ display: visible ? undefined : "none" }}
+          >
             {isImage && (
               <img
                 src={assetUrl}
