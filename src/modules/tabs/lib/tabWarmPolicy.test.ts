@@ -85,9 +85,7 @@ describe("canWarmTab", () => {
       cwd: "/terminal-local",
     });
 
-    expect(warmColdTab(tab, brokenIssues(), { broken: "/rejected" })).toBe(
-      tab,
-    );
+    expect(warmColdTab(tab, brokenIssues(), { broken: "/rejected" })).toBe(tab);
     expect(warmColdTab(tab, {}, { broken: "/recovered" })).toBe(tab);
   });
 });
