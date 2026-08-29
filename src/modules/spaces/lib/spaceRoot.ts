@@ -1,6 +1,10 @@
 import type { WorkspaceEnv } from "@/modules/workspace";
 import type { SerializedNode } from "@/modules/spaces/lib/serialize";
-import type { LoadedSpaces, SpaceMeta, SpaceState } from "@/modules/spaces/lib/store";
+import type {
+  LoadedSpaces,
+  SpaceMeta,
+  SpaceState,
+} from "@/modules/spaces/lib/store";
 
 export const SPACE_SCHEMA_VERSION = 2;
 
@@ -62,8 +66,7 @@ export async function migrateSpaceRoots(
   for (const space of loaded.spaces) {
     const state = loaded.states.get(space.id);
     const candidate =
-      legacyRootCandidate(space, state, null) ??
-      (await resolveHome(space.env));
+      legacyRootCandidate(space, state, null) ?? (await resolveHome(space.env));
     if (!candidate) {
       issues[space.id] = {
         candidate: null,

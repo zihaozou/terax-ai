@@ -105,7 +105,9 @@ describe("migrateSpaceRoots", () => {
       },
     );
 
-    expect(result.spaces.find((s) => s.id === "ok")?.root).toBe("/canon/project");
+    expect(result.spaces.find((s) => s.id === "ok")?.root).toBe(
+      "/canon/project",
+    );
     expect(result.issues.missing).toEqual({
       candidate: "/missing",
       message: "not found",

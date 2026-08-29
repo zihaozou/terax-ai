@@ -86,7 +86,8 @@ export function useSpacesBoot({
               rootIssues = {
                 [DEFAULT_SPACE_ID]: {
                   candidate,
-                  message: error instanceof Error ? error.message : String(error),
+                  message:
+                    error instanceof Error ? error.message : String(error),
                 },
               };
             }
@@ -154,8 +155,12 @@ export function useSpacesBoot({
         const env = activeSpaceEnv(spaces, active);
         await adoptWorkspaceEnv(env);
 
-        if (!rootIssues[active] && !restored.some((t) => t.spaceId === active)) {
-          const root = spaces.find((space) => space.id === active)?.root ?? null;
+        if (
+          !rootIssues[active] &&
+          !restored.some((t) => t.spaceId === active)
+        ) {
+          const root =
+            spaces.find((space) => space.id === active)?.root ?? null;
           restored.push(freshTerminalTab(active, root, allocId));
         }
 

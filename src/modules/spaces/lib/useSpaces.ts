@@ -1,9 +1,6 @@
 import { create } from "zustand";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import {
-  parseWorkspaceScopeKey,
-  type WorkspaceEnv,
-} from "@/modules/workspace";
+import { parseWorkspaceScopeKey, type WorkspaceEnv } from "@/modules/workspace";
 import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
 import {
   deleteSpaceData,
