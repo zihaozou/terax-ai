@@ -52,6 +52,7 @@ import {
   useSidebarPanel,
 } from "@/modules/sidebar";
 import {
+  createGitHistoryRequestGate,
   SourceControlPanel,
   useSourceControlContext,
 } from "@/modules/source-control";
@@ -96,7 +97,11 @@ import {
   WindowVibrancyBridge,
 } from "@/modules/theme";
 import { UpdaterDialog } from "@/modules/updater";
-import { useWorkspaceEnvStore, type WorkspaceEnv } from "@/modules/workspace";
+import {
+  useWorkspaceEnvStore,
+  type WorkspaceEnv,
+  workspaceScopeKey,
+} from "@/modules/workspace";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -223,6 +228,7 @@ export default function App() {
   useApplyEditorFontSize();
   const terminalPathDropTarget = useTerminalFileDrop();
   const explorerRef = useRef<FileExplorerHandle>(null);
+  const gitHistoryRequestGate = useRef(createGitHistoryRequestGate()).current;
 
   // Drives session disposal off the pane tree, not React lifecycles —
   // split/unsplit re-mount components but the leaf is still live.
@@ -722,15 +728,31 @@ export default function App() {
   }, [openSidebarView]);
   const handleOpenGitHistoryForPath = useCallback(
     async (path: string) => {
+      const request = gitHistoryRequestGate.begin(
+        useSpaces.getState().activeId ?? DEFAULT_SPACE_ID,
+        workspaceScopeKey(useWorkspaceEnvStore.getState().env),
+      );
       try {
         const repo = await native.gitResolveRepo(path);
         if (!repo) return;
+        const activeSpaceId = useSpaces.getState().activeId ?? DEFAULT_SPACE_ID;
+        const workspaceScope = workspaceScopeKey(
+          useWorkspaceEnvStore.getState().env,
+        );
+        if (
+          !gitHistoryRequestGate.isCurrent(
+            request,
+            activeSpaceId,
+            workspaceScope,
+          )
+        )
+          return;
         openCommitHistoryTab({ repoRoot: repo.repoRoot, branch: repo.branch });
       } catch {
         /* noop */
       }
     },
-    [openCommitHistoryTab],
+    [gitHistoryRequestGate, openCommitHistoryTab],
   );
   const { sourceControl, toggleSourceControl, openGitGraphFromContext } =
     useSourceControlContext({
@@ -1369,6 +1391,7 @@ export default function App() {
                         />
                       ) : (
                         <SourceControlPanel
+                          key={sourceControl.contextPath ?? "no-source-control"}
                           open
                           sourceControl={sourceControl}
                           onOpenDiff={openGitDiffTab}
