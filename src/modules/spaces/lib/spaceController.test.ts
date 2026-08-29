@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { workspaceScopeKey, type WorkspaceEnv } from "@/modules/workspace";
+import type { WorkspaceEnv } from "@/modules/workspace";
 import {
   createSpaceController,
   type PreparedWorkspace,
@@ -69,25 +69,50 @@ describe("createSpaceController", () => {
   });
 
   it("commits only the latest activation request", async () => {
+    const applied: string[] = [];
     const committed: string[] = [];
-    const gates = new Map([
-      ["local", deferred<PreparedWorkspace>()],
-      ["wsl:Ubuntu", deferred<PreparedWorkspace>()],
-    ]);
+    const firstPreparationEntered = deferred<void>();
+    const secondPreparationEntered = deferred<void>();
+    const firstGate = deferred<PreparedWorkspace>();
+    const secondGate = deferred<PreparedWorkspace>();
+    let preparations = 0;
     const controller = createSpaceController(
       deps({
-        prepareEnv: async (env) => gates.get(workspaceScopeKey(env))!.promise,
+        getSpace: (id) =>
+          id === "a"
+            ? makeSpace("a", "/a", { kind: "wsl", distro: "Ubuntu" })
+            : id === "wsl"
+              ? makeSpace("wsl", "/work", { kind: "wsl", distro: "Ubuntu" })
+              : null,
+        prepareEnv: async () => {
+          preparations += 1;
+          if (preparations === 1) {
+            firstPreparationEntered.resolve();
+            return firstGate.promise;
+          }
+          secondPreparationEntered.resolve();
+          return secondGate.promise;
+        },
+        applyEnv: ({ home }) => applied.push(home),
         commitActive: ({ spaceId }) => committed.push(spaceId),
       }),
     );
+
     const first = controller.activate({ spaceId: "a" });
+    await firstPreparationEntered.promise;
     const second = controller.activate({ spaceId: "wsl" });
-    gates.get("local")!.resolve({ env: { kind: "local" }, home: "/Users/me" });
-    gates.get("wsl:Ubuntu")!.resolve({
+    firstGate.resolve({
       env: { kind: "wsl", distro: "Ubuntu" },
-      home: "/home/me",
+      home: "/home/first",
     });
+    await secondPreparationEntered.promise;
+    secondGate.resolve({
+      env: { kind: "wsl", distro: "Ubuntu" },
+      home: "/home/second",
+    });
+
     await Promise.all([first, second]);
+    expect(applied).toEqual(["/home/second"]);
     expect(committed).toEqual(["wsl"]);
   });
 
