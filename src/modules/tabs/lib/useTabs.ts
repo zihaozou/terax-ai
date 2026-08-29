@@ -553,6 +553,33 @@ export function planSpaceRemoval(
   return { tabs: next, disposeLeafIds, activeId };
 }
 
+export function planTerminalPaneSplit(
+  tab: TerminalTab,
+  dir: SplitDir,
+  root: string,
+  allocId: () => number,
+): { tab: TerminalTab; leafId: number } | null {
+  if (tab.blocks || leafIds(tab.paneTree).length >= MAX_PANES_PER_TAB)
+    return null;
+  const splitId = allocId();
+  const leafId = allocId();
+  return {
+    tab: {
+      ...tab,
+      paneTree: splitLeaf(
+        tab.paneTree,
+        tab.activeLeafId,
+        splitId,
+        leafId,
+        dir,
+        root,
+      ),
+      activeLeafId: leafId,
+    },
+    leafId,
+  };
+}
+
 export function useTabs(initial?: Partial<TerminalTab>) {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const tabId = 1;
@@ -1195,24 +1222,20 @@ export function useTabs(initial?: Partial<TerminalTab>) {
 
   /** Split the active leaf of `tabId` along `dir`. Returns the new leaf id. */
   const splitActivePane = useCallback(
-    (tabId: number, dir: SplitDir): number | null => {
+    (tabId: number, dir: SplitDir, root: string): number | null => {
       let newLeafId: number | null = null;
       setTabs((curr) =>
-        curr.map((t) => {
-          if (t.id !== tabId || t.kind !== "terminal" || t.blocks) return t;
-          if (leafIds(t.paneTree).length >= MAX_PANES_PER_TAB) return t;
-          const splitId = nextIdRef.current++;
-          const leafId = nextIdRef.current++;
-          newLeafId = leafId;
-          const paneTree = splitLeaf(
-            t.paneTree,
-            t.activeLeafId,
-            splitId,
-            leafId,
+        curr.map((tab) => {
+          if (tab.id !== tabId || tab.kind !== "terminal") return tab;
+          const plan = planTerminalPaneSplit(
+            tab,
             dir,
-            t.cwd,
+            root,
+            () => nextIdRef.current++,
           );
-          return { ...t, paneTree, activeLeafId: leafId };
+          if (!plan) return tab;
+          newLeafId = plan.leafId;
+          return plan.tab;
         }),
       );
       return newLeafId;

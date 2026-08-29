@@ -110,6 +110,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { activateControlFileNavigation } from "@/app/lib/controlFileNavigation";
+import { deleteSpaceAfterActivation } from "@/modules/spaces/lib/spaceDeletion";
 import { CloseDialogs } from "./components/CloseDialogs";
 import { WorkspaceInputBar } from "./components/WorkspaceInputBar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
@@ -724,11 +726,14 @@ export default function App() {
 
   const splitActivePaneInActiveTab = useCallback(
     (dir: "row" | "col") => {
-      const t = tabsRef.current.find((x) => x.id === activeId);
-      if (t?.kind !== "terminal") return;
-      splitActivePane(activeId, dir);
+      const tab = tabsRef.current.find(
+        (candidate) => candidate.id === activeId,
+      );
+      if (tab?.kind !== "terminal" || !activeSpaceRoot || activeRootIssue)
+        return;
+      splitActivePane(activeId, dir, activeSpaceRoot);
     },
-    [activeId, splitActivePane],
+    [activeId, activeRootIssue, activeSpaceRoot, splitActivePane],
   );
 
   const livePaneBounds = useCallback((tabId: number): PaneBounds[] => {
@@ -1037,23 +1042,26 @@ export default function App() {
 
   const handleDeleteSpace = useCallback(
     (id: string) => {
-      const wasActive = useSpaces.getState().activeId === id;
-      const nextSpaceId = useSpaces.getState().remove(id);
-      if (!nextSpaceId) return;
-      const fallback = useSpaces
-        .getState()
-        .spaces.find((space) => space.id === nextSpaceId);
+      const state = useSpaces.getState();
+      const fallback = state.spaces.find((space) => space.id !== id);
+      if (!fallback) return;
       const fallbackTabs = tabsRef.current.filter(
-        (tab) => tab.spaceId === nextSpaceId,
+        (tab) => tab.spaceId === fallback.id,
       );
       const fallbackTabId = fallbackTabs[fallbackTabs.length - 1]?.id;
-      removeTabsForSpace(id, nextSpaceId, fallback?.root ?? undefined);
-      if (wasActive) {
-        void spaceController.activate({
-          spaceId: nextSpaceId,
-          tabId: fallbackTabId,
-        });
-      }
+      const remove = () => {
+        useSpaces.getState().remove(id);
+        removeTabsForSpace(id, fallback.id, fallback.root ?? undefined);
+      };
+      void deleteSpaceAfterActivation({
+        isActive: state.activeId === id,
+        activate: () =>
+          spaceController.activate({
+            spaceId: fallback.id,
+            tabId: fallbackTabId,
+          }),
+        remove,
+      });
     },
     [removeTabsForSpace, spaceController],
   );
@@ -1201,14 +1209,16 @@ export default function App() {
         spaceId,
         activate: false,
       });
-      if (focus) void spaceController.activate({ spaceId, tabId: id });
-      const editor = editorRefs.current.get(id);
-      if (line !== undefined) {
-        if (editor) editor.gotoLine(line, { focus });
-        else pendingEditorNavigation.current.set(id, { line, focus });
-      } else if (focus) {
-        if (editor) editor.focus();
-        else pendingEditorNavigation.current.set(id, { focus: true });
+      if (focus) {
+        void activateControlFileNavigation({
+          activate: () => spaceController.activate({ spaceId, tabId: id }),
+          getEditor: () => editorRefs.current.get(id) ?? null,
+          setPending: (targetId, navigation) => {
+            pendingEditorNavigation.current.set(targetId, navigation);
+          },
+          tabId: id,
+          line,
+        });
       }
       return id;
     },
