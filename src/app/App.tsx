@@ -71,6 +71,7 @@ import { StatusBar } from "@/modules/statusbar";
 import {
   type CloseTabsPlan,
   TabSwitcherHud,
+  spaceIdForLeaf,
   useTabSwitcher,
   useTabs,
   useWindowTitle,
@@ -1007,12 +1008,19 @@ export default function App() {
   const handleTerminalCwd = useCallback(
     (leafId: number, cwd: string) => {
       setLeafCwd(leafId, cwd);
-      if (cwd && !authorizedCwds.current.has(cwd)) {
-        authorizedCwds.current.add(cwd);
-        native.workspaceAuthorize(cwd).catch(() => {
-          authorizedCwds.current.delete(cwd);
-        });
-      }
+      const spaceId = spaceIdForLeaf(tabsRef.current, leafId);
+      const env = useSpaces
+        .getState()
+        .spaces.find((space) => space.id === spaceId)?.env;
+      if (!cwd || !env) return;
+
+      const key = `${workspaceScopeKey(env)}\0${cwd}`;
+      if (authorizedCwds.current.has(key)) return;
+
+      authorizedCwds.current.add(key);
+      native.workspaceAuthorize(cwd, env).catch(() => {
+        authorizedCwds.current.delete(key);
+      });
     },
     [setLeafCwd],
   );
