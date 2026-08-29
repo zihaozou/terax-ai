@@ -28,13 +28,22 @@ A broader ownership search found only active-Space root consumers and terminal-l
 | `pnpm check-types` | passed | `tsc --noEmit` exited 0 |
 | `pnpm lint` | passed with pre-existing warnings | exited 0 with 70 warnings, none in Task 10 changed source files |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` | passed | exited 0 |
-| `cargo check --manifest-path src-tauri/Cargo.toml` | passed | dev profile completed successfully |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | passed | 312 Rust tests passed across unit and integration suites |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | passed, supplementary | dev profile completed successfully; not a substitute for the planned Rust gates |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | passed, supplementary | 312 Rust tests passed across unit and integration suites; not a substitute for the planned Rust gates |
 | `git diff --check` | passed | no whitespace errors before commit or in the final worktree |
 | `git diff --check origin/main...HEAD` | failed, pre-existing outside Task 10 | trailing whitespace in pre-existing `sidecar/vendor/anemll-swift-cli` branch files; `git show --check a272cc5` passes |
 | `pnpm exec biome lint src/modules/spaces/lib/activeSpace.ts src/modules/spaces/lib/spaceController.test.ts` | passed | 2 changed TypeScript files checked with no diagnostics |
 
 `pnpm lint` warnings are pre-existing in unrelated markdown, editor, and settings files. The full type check and changed-file Biome diagnostics found no introduced diagnostics. Primary LSP diagnostics were not available in this non-desktop worker environment.
+
+## Required Rust gate follow-up
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| `cd src-tauri && cargo clippy --all-targets --locked -- -D warnings` | passed | completed with exit 0 and no warnings |
+| `cd src-tauri && cargo nextest run --locked` | passed | 312 tests across 7 binaries: 312 passed, 0 skipped |
+
+`cargo nextest` was installed, so no fallback command was needed. No branch-introduced Clippy findings required changes.
 
 ## Manual limitations
 
