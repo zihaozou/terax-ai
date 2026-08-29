@@ -22,11 +22,18 @@ import {
 } from "./imeBridge";
 import { isIme229PassthroughKey, terminalReadlineSequence } from "./keymap";
 import {
+  readNativeTerminalClipboardPayload,
   readTerminalClipboard,
   writeTerminalClipboard,
 } from "./terminalClipboard";
 import { createTerminalLinkHandler } from "./terminalLinks";
-import { macKittyPasteRoute, pasteIntoTerminal } from "./terminalPaste";
+import {
+  createTerminalPasteQueue,
+  pasteIntoTerminal,
+  pasteTerminalClipboardPayload,
+  shouldHandlePiCmdPaste,
+  shouldHandlePiRightClick,
+} from "./terminalPaste";
 
 export const POOL_MAX_SIZE = 5;
 const FIT_DEBOUNCE_MS = 8;
@@ -269,6 +276,60 @@ function createSlot(): Slot {
     imeState: createImeBridgeState(),
   };
 
+  const enqueuePaste = createTerminalPasteQueue();
+  const pastePiClipboard = (leafId: number, bridge: LeafBridge) => {
+    void enqueuePaste(() =>
+      pasteTerminalClipboardPayload({
+        agent: bridge.agent,
+        targetLeafId: leafId,
+        currentLeafId: () => slot.currentLeafId,
+        readClipboard: readNativeTerminalClipboardPayload,
+        terminal: slot.term,
+        writeToPty: (data) => bridge.writeToPty(data),
+      }),
+    ).catch(() => {});
+  };
+
+  host.addEventListener(
+    "mousedown",
+    (event) => {
+      const leafId = slot.currentLeafId;
+      if (leafId === null) return;
+      const bridge = adapter?.resolveLeaf(leafId);
+      if (
+        !bridge ||
+        !shouldHandlePiRightClick(bridge.agent, {
+          isMac: IS_MAC,
+          button: event.button,
+        })
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      pastePiClipboard(leafId, bridge);
+    },
+    { capture: true },
+  );
+  host.addEventListener(
+    "contextmenu",
+    (event) => {
+      const leafId = slot.currentLeafId;
+      if (leafId === null) return;
+      const bridge = adapter?.resolveLeaf(leafId);
+      if (
+        !bridge ||
+        !shouldHandlePiRightClick(bridge.agent, {
+          isMac: IS_MAC,
+          button: event.button,
+        })
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    { capture: true },
+  );
+
   // Some WKWebView builds bypass xterm's composition events. The pure bridge
   // repairs that path and stands down when native composition is observed.
   if (IS_MAC) {
@@ -385,8 +446,19 @@ function createSlot(): Slot {
       event.preventDefault();
       return false;
     }
+    const isCmdV = isMacCmdKey(event, "v");
+    if (
+      shouldHandlePiCmdPaste(bridge.agent, {
+        isMac: IS_MAC,
+        isCmdV,
+        kittyKeyboardActive: kittyKeyboardActive(slot.term),
+      })
+    ) {
+      event.preventDefault();
+      if (event.type === "keydown") pastePiClipboard(leafId, bridge);
+      return false;
+    }
     if (isMacKittyPaste(event, slot.term)) {
-      if (macKittyPasteRoute(bridge.agent) === "pty") return true;
       // Keep native text paste for non-Pi programs. Returning false skips
       // xterm's CSI-u encoding without preventing WKWebView's paste command.
       return false;

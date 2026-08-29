@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const imageResource = vi.hoisted(() => ({
+  close: vi.fn<() => Promise<void>>(),
+}));
 const native = vi.hoisted(() => ({
+  readImage: vi.fn<() => Promise<typeof imageResource>>(),
   readText: vi.fn<() => Promise<string>>(),
   writeText: vi.fn<(t: string) => Promise<void>>(),
 }));
@@ -13,7 +17,8 @@ const web = {
 
 const original = globalThis.navigator;
 const LINUX = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15";
-const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+const MAC =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
 
 function platform(userAgent: string) {
   Object.defineProperty(globalThis, "navigator", {
@@ -29,6 +34,9 @@ async function load() {
 
 describe("terminalClipboard", () => {
   beforeEach(() => {
+    imageResource.close.mockReset();
+    imageResource.close.mockResolvedValue();
+    native.readImage.mockReset();
     native.readText.mockReset();
     native.writeText.mockReset();
     web.readText.mockReset();
@@ -77,5 +85,39 @@ describe("terminalClipboard", () => {
     await writeTerminalClipboard("copied");
     expect(native.writeText).toHaveBeenCalledWith("copied");
     expect(web.writeText).not.toHaveBeenCalled();
+  });
+
+  it("detects native clipboard images and releases the resource", async () => {
+    platform(MAC);
+    native.readImage.mockResolvedValue(imageResource);
+    const { readNativeTerminalClipboardPayload } = await load();
+
+    await expect(readNativeTerminalClipboardPayload()).resolves.toEqual({
+      kind: "image",
+    });
+    expect(imageResource.close).toHaveBeenCalledOnce();
+  });
+
+  it("returns native clipboard text when no image is available", async () => {
+    platform(MAC);
+    native.readImage.mockRejectedValue(new Error("no image"));
+    native.readText.mockResolvedValue("hello");
+    const { readNativeTerminalClipboardPayload } = await load();
+
+    await expect(readNativeTerminalClipboardPayload()).resolves.toEqual({
+      kind: "text",
+      text: "hello",
+    });
+  });
+
+  it("returns empty when the native clipboard has no supported payload", async () => {
+    platform(MAC);
+    native.readImage.mockRejectedValue(new Error("no image"));
+    native.readText.mockRejectedValue(new Error("no text"));
+    const { readNativeTerminalClipboardPayload } = await load();
+
+    await expect(readNativeTerminalClipboardPayload()).resolves.toEqual({
+      kind: "empty",
+    });
   });
 });
