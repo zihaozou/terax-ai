@@ -45,6 +45,42 @@ describe("activateControlFileNavigation", () => {
     expect(setPending).not.toHaveBeenCalled();
   });
 
+  it("navigates a mounted editor without activating or focusing for focus:false", async () => {
+    const activate = vi.fn(async () => true);
+    const focus = vi.fn();
+    const gotoLine = vi.fn();
+
+    await activateControlFileNavigation({
+      activate,
+      getEditor: () => ({ focus, gotoLine }),
+      setPending: vi.fn(),
+      tabId: 4,
+      line: 12,
+      focus: false,
+    });
+
+    expect(activate).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+    expect(gotoLine).toHaveBeenCalledWith(12, { focus: false });
+  });
+
+  it("queues unfocused line navigation without activating for a late mount", async () => {
+    const activate = vi.fn(async () => true);
+    const setPending = vi.fn();
+
+    await activateControlFileNavigation({
+      activate,
+      getEditor: () => null,
+      setPending,
+      tabId: 4,
+      line: 12,
+      focus: false,
+    });
+
+    expect(activate).not.toHaveBeenCalled();
+    expect(setPending).toHaveBeenCalledWith(4, { line: 12, focus: false });
+  });
+
   it("queues navigation after successful activation when the editor mounts later", async () => {
     const setPending = vi.fn();
 

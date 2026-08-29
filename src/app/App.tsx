@@ -1209,7 +1209,7 @@ export default function App() {
         spaceId,
         activate: false,
       });
-      if (focus) {
+      if (focus || line !== undefined) {
         void activateControlFileNavigation({
           activate: () => spaceController.activate({ spaceId, tabId: id }),
           getEditor: () => editorRefs.current.get(id) ?? null,
@@ -1218,6 +1218,7 @@ export default function App() {
           },
           tabId: id,
           line,
+          focus,
         });
       }
       return id;

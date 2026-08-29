@@ -12,6 +12,7 @@ type ControlFileNavigationDeps = {
   ) => void;
   tabId: number;
   line?: number;
+  focus?: boolean;
 };
 
 export async function activateControlFileNavigation({
@@ -20,16 +21,15 @@ export async function activateControlFileNavigation({
   setPending,
   tabId,
   line,
+  focus = true,
 }: ControlFileNavigationDeps): Promise<void> {
-  if (!(await activate())) return;
+  if (focus && !(await activate())) return;
+  if (!focus && line === undefined) return;
   const editor = getEditor();
   if (!editor) {
-    setPending(
-      tabId,
-      line === undefined ? { focus: true } : { line, focus: true },
-    );
+    setPending(tabId, line === undefined ? { focus } : { line, focus });
     return;
   }
   if (line === undefined) editor.focus();
-  else editor.gotoLine(line, { focus: true });
+  else editor.gotoLine(line, { focus });
 }
