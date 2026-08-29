@@ -77,4 +77,17 @@ describe("canWarmTab", () => {
       paneTree: { kind: "leaf", cwd: "/terminal-local" },
     });
   });
+
+  it("leaves a running terminal unchanged while root snapshots change", () => {
+    const tab = terminalTab({
+      spaceId: "broken",
+      cold: false,
+      cwd: "/terminal-local",
+    });
+
+    expect(warmColdTab(tab, brokenIssues(), { broken: "/rejected" })).toBe(
+      tab,
+    );
+    expect(warmColdTab(tab, {}, { broken: "/recovered" })).toBe(tab);
+  });
 });
