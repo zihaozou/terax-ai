@@ -135,6 +135,11 @@ type PickerRequest =
 
 export default function App() {
   const rootIssues = useSpaces((state) => state.rootIssues);
+  const spaces = useSpaces((state) => state.spaces);
+  const spaceRoots = useMemo(
+    () => Object.fromEntries(spaces.map((space) => [space.id, space.root])),
+    [spaces],
+  );
 
   const {
     tabs,
@@ -174,7 +179,11 @@ export default function App() {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
-  } = useTabs(getLaunchDir() ? { cwd: getLaunchDir() } : undefined, rootIssues);
+  } = useTabs(
+    getLaunchDir() ? { cwd: getLaunchDir() } : undefined,
+    rootIssues,
+    spaceRoots,
+  );
 
   // Hydrate the cross-window preference store. This is the main window's only
   // unconditional hydration point — without it every usePreferencesStore

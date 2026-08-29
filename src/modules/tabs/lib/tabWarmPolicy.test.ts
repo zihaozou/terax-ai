@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
 import type { Tab } from "@/modules/tabs";
-import { canWarmTab } from "./tabWarmPolicy";
+import { canWarmTab, warmColdTab } from "./tabWarmPolicy";
 
-function terminalTab(input: { spaceId: string; cold?: boolean }): Tab {
+function terminalTab(input: {
+  spaceId: string;
+  cold?: boolean;
+  cwd?: string;
+}): Tab {
   return {
     id: 1,
     kind: "terminal",
     spaceId: input.spaceId,
     cold: input.cold,
     title: "shell",
-    paneTree: { kind: "leaf", id: 10 },
+    cwd: input.cwd,
+    paneTree: { kind: "leaf", id: 10, cwd: input.cwd },
     activeLeafId: 10,
   };
 }
@@ -45,5 +50,31 @@ describe("canWarmTab", () => {
     expect(canWarmTab(terminalTab({ spaceId: "ok" }), brokenIssues())).toBe(
       true,
     );
+  });
+
+  it("seeds a recovered Space root before warming a no-cwd fallback", () => {
+    const tab = terminalTab({ spaceId: "broken", cold: true });
+
+    expect(warmColdTab(tab, brokenIssues(), { broken: "/rejected" })).toBe(tab);
+    expect(warmColdTab(tab, {}, {})).toBe(tab);
+    expect(warmColdTab(tab, {}, { broken: "/recovered" })).toMatchObject({
+      cold: false,
+      cwd: "/recovered",
+      paneTree: { kind: "leaf", cwd: "/recovered" },
+    });
+  });
+
+  it("does not rewrite an existing terminal cwd while warming", () => {
+    const tab = terminalTab({
+      spaceId: "broken",
+      cold: true,
+      cwd: "/terminal-local",
+    });
+
+    expect(warmColdTab(tab, {}, { broken: "/recovered" })).toMatchObject({
+      cold: false,
+      cwd: "/terminal-local",
+      paneTree: { kind: "leaf", cwd: "/terminal-local" },
+    });
   });
 });

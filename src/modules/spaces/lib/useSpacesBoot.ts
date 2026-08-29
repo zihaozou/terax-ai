@@ -17,6 +17,7 @@ import {
 import {
   loadAll,
   type SpaceMeta,
+  type SpaceState,
   saveActiveId,
   saveSchemaVersion,
   saveSpacesList,
@@ -41,6 +42,33 @@ async function validateSpaceRoot(
   const root = await native.canonicalize(candidate, env);
   await native.workspaceAuthorize(root, env);
   return root;
+}
+
+export function restoreBootTabs(
+  spaces: SpaceMeta[],
+  states: Map<string, SpaceState>,
+  active: string,
+  rootIssues: SpaceRootIssues,
+  allocId: () => number,
+): Tab[] {
+  const restored: Tab[] = [];
+  for (const space of spaces) {
+    const state = states.get(space.id);
+    if (!state) continue;
+    restored.push(...hydrateTabs(state.tabs, space.id, allocId));
+  }
+
+  const activeSpace = spaces.find((space) => space.id === active);
+  if (!restored.some((tab) => tab.spaceId === active) && activeSpace) {
+    restored.push(
+      freshTerminalTab(
+        active,
+        hasUsableSpaceRoot(activeSpace, rootIssues) ? activeSpace.root : null,
+        allocId,
+      ),
+    );
+  }
+  return restored;
 }
 
 function uniqueCwds(tabs: Tab[]): string[] {
@@ -149,29 +177,21 @@ export function useSpacesBoot({
           );
         }
 
-        const restored: Tab[] = [];
-        for (const space of spaces) {
-          const st = states.get(space.id);
-          if (!st) continue;
-          restored.push(...hydrateTabs(st.tabs, space.id, allocId));
-        }
-
         const active =
           activeId && spaces.some((s) => s.id === activeId)
             ? activeId
             : spaces[0].id;
+        const restored = restoreBootTabs(
+          spaces,
+          states,
+          active,
+          rootIssues,
+          allocId,
+        );
         setActiveSpaceForNewTabs(active);
 
         const env = activeSpaceEnv(spaces, active);
         await adoptWorkspaceEnv(env);
-
-        const activeSpace = spaces.find((space) => space.id === active);
-        if (
-          hasUsableSpaceRoot(activeSpace, rootIssues) &&
-          !restored.some((t) => t.spaceId === active)
-        ) {
-          restored.push(freshTerminalTab(active, activeSpace.root, allocId));
-        }
 
         await Promise.allSettled(
           uniqueCwds(restored).map((cwd) => native.workspaceAuthorize(cwd)),

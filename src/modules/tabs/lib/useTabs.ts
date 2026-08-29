@@ -20,7 +20,7 @@ import {
 } from "@/modules/terminal/lib/panes";
 import { disposeSession } from "@/modules/terminal/lib/useTerminalSession";
 import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
-import { canWarmTab } from "./tabWarmPolicy";
+import { type SpaceRoots, warmColdTab } from "./tabWarmPolicy";
 import {
   useCallback,
   useEffect,
@@ -585,6 +585,7 @@ export function planTerminalPaneSplit(
 export function useTabs(
   initial?: Partial<TerminalTab>,
   rootIssues: SpaceRootIssues = {},
+  spaceRoots: SpaceRoots = {},
 ) {
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const tabId = 1;
@@ -623,10 +624,12 @@ export function useTabs(
     if (!booted) return;
     setTabs((curr) => {
       const t = curr.find((x) => x.id === activeId);
-      if (!t?.cold || !canWarmTab(t, rootIssues)) return curr;
-      return curr.map((x) => (x.id === activeId ? { ...x, cold: false } : x));
+      if (!t) return curr;
+      const warmed = warmColdTab(t, rootIssues, spaceRoots);
+      if (warmed === t) return curr;
+      return curr.map((x) => (x.id === activeId ? warmed : x));
     });
-  }, [activeId, booted, rootIssues]);
+  }, [activeId, booted, rootIssues, spaceRoots]);
 
   const allocId = useCallback(() => nextIdRef.current++, []);
 
@@ -638,10 +641,13 @@ export function useTabs(
 
   const replaceTabs = useCallback((next: Tab[], nextActiveId: number) => {
     if (next.length === 0) return;
+    const active = next.some((tab) => tab.id === nextActiveId)
+      ? nextActiveId
+      : next[0].id;
     tabsRef.current = next;
-    activeIdRef.current = nextActiveId;
+    activeIdRef.current = active;
     setTabs(next);
-    setActiveId(nextActiveId);
+    setActiveId(active);
   }, []);
 
   // Appends a cold terminal tab to a space without stealing focus, so the
