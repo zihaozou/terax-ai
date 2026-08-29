@@ -424,8 +424,7 @@ export const SourceControlPanel = memo(function SourceControlPanel({
     !isDiverged &&
     !scm.actionBusy &&
     !sourceControl.busyAction;
-  const canFetch =
-    hasUpstream && !scm.actionBusy && !sourceControl.busyAction;
+  const canFetch = hasUpstream && !scm.actionBusy && !sourceControl.busyAction;
 
   const footerFeedback = useMemo(() => {
     if (scm.actionError)
