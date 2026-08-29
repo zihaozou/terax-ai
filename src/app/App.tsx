@@ -53,7 +53,6 @@ import {
 } from "@/modules/sidebar";
 import {
   SourceControlPanel,
-  useRepositoryTargeting,
   useSourceControlContext,
 } from "@/modules/source-control";
 import {
@@ -97,11 +96,7 @@ import {
   WindowVibrancyBridge,
 } from "@/modules/theme";
 import { UpdaterDialog } from "@/modules/updater";
-import {
-  useWorkspaceEnvStore,
-  type WorkspaceEnv,
-  workspaceScopeKey,
-} from "@/modules/workspace";
+import { useWorkspaceEnvStore, type WorkspaceEnv } from "@/modules/workspace";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -233,7 +228,6 @@ export default function App() {
   // split/unsplit re-mount components but the leaf is still live.
   const liveLeavesRef = useRef<Set<number>>(new Set());
 
-  const workspaceEnv = useWorkspaceEnvStore((s) => s.env);
   const setWorkspaceEnv = useWorkspaceEnvStore((s) => s.setEnv);
   const {
     home,
@@ -259,8 +253,6 @@ export default function App() {
     activeIdRef.current = activeId;
     activeSpaceIdRef.current = activeSpaceId;
   }, [tabs, activeId, activeSpaceId]);
-  const sourceControlSpaceId = activeSpaceId ?? DEFAULT_SPACE_ID;
-
   useSpacesBoot({
     ready: launchCwdResolved,
     launchCwd,
@@ -724,45 +716,26 @@ export default function App() {
     activeTab?.kind === "editor" || activeTab?.kind === "markdown"
       ? activeTab.path
       : null;
-  const isRepositoryContextCurrent = useCallback(
-    (spaceId: string, workspaceKey: string) => {
-      const currentSpaceId = useSpaces.getState().activeId ?? DEFAULT_SPACE_ID;
-      const currentWorkspaceKey = workspaceScopeKey(
-        useWorkspaceEnvStore.getState().env,
-      );
-      return spaceId === currentSpaceId && workspaceKey === currentWorkspaceKey;
-    },
-    [],
-  );
-  const openSourceControl = useCallback(() => {
-    openSidebarView("source-control");
-  }, [openSidebarView]);
   const toggleHiddenFiles = useCallback(() => {
     openSidebarView("explorer");
     void setShowHidden(!usePreferencesStore.getState().showHidden);
   }, [openSidebarView]);
-  const {
-    repositoryTarget: sourceControlRepositoryTarget,
-    openGitHistory: handleOpenGitHistoryForPath,
-    followActiveContext: handleFollowRepositoryContext,
-  } = useRepositoryTargeting({
-    spaceId: sourceControlSpaceId,
-    workspaceKey: workspaceScopeKey(workspaceEnv),
-    isContextCurrent: isRepositoryContextCurrent,
-    openSourceControl,
-    openCommitHistoryTab,
-  });
+  const handleOpenGitHistoryForPath = useCallback(
+    async (path: string) => {
+      try {
+        const repo = await native.gitResolveRepo(path);
+        if (!repo) return;
+        openCommitHistoryTab({ repoRoot: repo.repoRoot, branch: repo.branch });
+      } catch {
+        /* noop */
+      }
+    },
+    [openCommitHistoryTab],
+  );
   const { sourceControl, toggleSourceControl, openGitGraphFromContext } =
     useSourceControlContext({
-      activeTab,
-      tabs,
-      activeTerminalLeafCwd: activeSpaceRoot,
-      explorerRoot: activeSpaceRoot,
-      launchCwd: activeSpaceRoot,
-      launchCwdResolved,
-      home: activeSpaceRoot,
-      sidebarView,
-      repositoryTarget: sourceControlRepositoryTarget,
+      spaceRoot: activeSpaceRoot,
+      rootIssue: activeRootIssue,
       cycleSidebarView,
       openCommitHistoryTab,
     });
@@ -1402,10 +1375,6 @@ export default function App() {
                           onOpenGitGraph={openGitGraphFromContext}
                           onOpenFile={handleOpenFile}
                           onNavigateToPath={cdInNewTab}
-                          repositoryTarget={sourceControlRepositoryTarget}
-                          onFollowRepositoryContext={
-                            handleFollowRepositoryContext
-                          }
                         />
                       )}
                     </div>
