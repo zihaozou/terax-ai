@@ -1,8 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import {
-  currentWorkspaceEnv,
-  type WorkspaceEnv,
-} from "@/modules/workspace";
+import { currentWorkspaceEnv, type WorkspaceEnv } from "@/modules/workspace";
 
 export type ReadResult =
   | { kind: "text"; content: string; size: number }
@@ -15,6 +12,12 @@ export type DirEntry = {
   size: number;
   mtime: number;
   gitignored: boolean;
+};
+
+export type FileStat = {
+  size: number;
+  mtime: number;
+  kind: "file" | "dir" | "symlink";
 };
 
 export type CommandOutput = {
@@ -168,6 +171,13 @@ export const native = {
       path,
       workspace,
     }),
+  stat: (path: string, workspace: WorkspaceEnv = currentWorkspaceEnv()) =>
+    invoke<FileStat>("fs_stat", { path, workspace }),
+  listSubdirs: (
+    path: string,
+    showHidden: boolean,
+    workspace: WorkspaceEnv = currentWorkspaceEnv(),
+  ) => invoke<string[]>("list_subdirs", { path, showHidden, workspace }),
   createFile: (path: string) =>
     invoke<void>("fs_create_file", { path, workspace: currentWorkspaceEnv() }),
   createDir: (path: string) =>

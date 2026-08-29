@@ -258,12 +258,9 @@ export default function App() {
 
   const handleWorkspaceChange = useCallback(
     async (env: WorkspaceEnv) => {
-      const switched = await switchWorkspace(env);
-      if (switched && activeSpaceId) {
-        useSpaces.getState().setEnv(activeSpaceId, env);
-      }
+      await switchWorkspace(env);
     },
-    [switchWorkspace, activeSpaceId],
+    [switchWorkspace],
   );
 
   useSpacesBoot({
@@ -1034,10 +1031,12 @@ export default function App() {
   const activeCwd = activeTerminalLeafCwd;
 
   const handleNewSpace = useCallback(() => {
+    const root = activeCwd ?? home;
+    if (!root) return null;
     const { spaces, create, setActive } = useSpaces.getState();
     const meta = create({
       name: `Space ${spaces.length + 1}`,
-      root: activeCwd ?? home ?? null,
+      root,
       env: workspaceEnv,
     });
     setActiveSpaceForNewTabs(meta.id);

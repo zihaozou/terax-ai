@@ -13,7 +13,7 @@ import {
 type CreateInput = {
   id?: string;
   name: string;
-  root: string | null;
+  root: string;
   env?: WorkspaceEnv;
 };
 
@@ -33,7 +33,9 @@ type State = {
   ) => void;
   create: (input: CreateInput) => SpaceMeta;
   rename: (id: string, name: string) => void;
-  setEnv: (id: string, env: WorkspaceEnv) => void;
+  setRoot: (id: string, root: string) => void;
+  setRootIssue: (id: string, issue: SpaceRootIssues[string]) => void;
+  clearRootIssue: (id: string) => void;
   setColor: (id: string, color: number | undefined) => void;
   reorder: (orderedIds: string[]) => void;
   remove: (id: string) => string | null;
@@ -79,12 +81,22 @@ export const useSpaces = create<State>((set, get) => ({
     void saveSpacesList(spaces);
   },
 
-  setEnv: (id, env) => {
+  setRoot: (id, root) => {
     const spaces = get().spaces.map((s) =>
-      s.id === id ? { ...s, env, updatedAt: Date.now() } : s,
+      s.id === id ? { ...s, root, updatedAt: Date.now() } : s,
     );
-    set({ spaces });
+    const { [id]: _, ...rootIssues } = get().rootIssues;
+    set({ spaces, rootIssues });
     void saveSpacesList(spaces);
+  },
+
+  setRootIssue: (id, issue) => {
+    set({ rootIssues: { ...get().rootIssues, [id]: issue } });
+  },
+
+  clearRootIssue: (id) => {
+    const { [id]: _, ...rootIssues } = get().rootIssues;
+    set({ rootIssues });
   },
 
   setColor: (id, color) => {
@@ -115,7 +127,8 @@ export const useSpaces = create<State>((set, get) => ({
     const spaces = prev.spaces.filter((s) => s.id !== id);
     let activeId = prev.activeId;
     if (activeId === id) activeId = spaces[0]?.id ?? null;
-    set({ spaces, activeId });
+    const { [id]: _, ...rootIssues } = prev.rootIssues;
+    set({ spaces, activeId, rootIssues });
     void saveSpacesList(spaces);
     void deleteSpaceData(id);
     if (activeId !== prev.activeId) void saveActiveId(activeId);
