@@ -44,7 +44,7 @@ export function WorkspaceEnvSelector({ env, onCreateInEnv }: Props) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus:outline-none focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-accent data-[state=open]:text-foreground"
+          className="flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 data-[state=open]:bg-accent data-[state=open]:text-foreground"
           title="Create Space in environment"
         >
           <HugeiconsIcon

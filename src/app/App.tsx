@@ -64,6 +64,7 @@ import {
   useSpacesBoot,
   validateSpaceRoot,
 } from "@/modules/spaces";
+import { createPickerRequestGate } from "@/modules/spaces/lib/directoryPicker";
 import { deleteSpaceAfterActivation } from "@/modules/spaces/lib/spaceDeletion";
 import { StatusBar } from "@/modules/statusbar";
 import {
@@ -316,39 +317,56 @@ export default function App() {
   const [pickerRequest, setPickerRequest] = useState<PickerRequest | null>(
     null,
   );
+  const pickerRequestGate = useRef(createPickerRequestGate()).current;
+
+  const closePicker = useCallback(() => {
+    pickerRequestGate.invalidate();
+    setPickerRequest(null);
+  }, [pickerRequestGate]);
 
   const openCreateSpacePicker = useCallback(
     async (env: WorkspaceEnv) => {
+      const id = pickerRequestGate.begin();
       try {
         const initialPath = await spaceController.homeForEnv(env);
-        setPickerRequest({ mode: "create-space", env, initialPath });
+        if (pickerRequestGate.isCurrent(id)) {
+          setPickerRequest({ mode: "create-space", env, initialPath });
+        }
       } catch (error) {
-        window.alert(`Unable to prepare Space environment: ${String(error)}`);
+        if (pickerRequestGate.isCurrent(id)) {
+          window.alert(`Unable to prepare Space environment: ${String(error)}`);
+        }
       }
     },
-    [spaceController],
+    [pickerRequestGate, spaceController],
   );
 
   const openChangeRootPicker = useCallback(async () => {
+    const id = pickerRequestGate.begin();
     if (!activeSpace) return;
     try {
       const initialPath =
         activeSpaceRoot ??
         activeRootIssue?.candidate ??
         (await spaceController.homeForEnv(activeSpace.env));
-      setPickerRequest({
-        mode: "change-root",
-        spaceId: activeSpace.id,
-        env: activeSpace.env,
-        initialPath,
-      });
+      if (pickerRequestGate.isCurrent(id)) {
+        setPickerRequest({
+          mode: "change-root",
+          spaceId: activeSpace.id,
+          env: activeSpace.env,
+          initialPath,
+        });
+      }
     } catch (error) {
-      window.alert(`Unable to prepare folder picker: ${String(error)}`);
+      if (pickerRequestGate.isCurrent(id)) {
+        window.alert(`Unable to prepare folder picker: ${String(error)}`);
+      }
     }
   }, [
     activeRootIssue?.candidate,
     activeSpace,
     activeSpaceRoot,
+    pickerRequestGate,
     spaceController,
   ]);
 
@@ -356,7 +374,7 @@ export default function App() {
     (path: string) => {
       const request = pickerRequest;
       if (!request) return;
-      setPickerRequest(null);
+      closePicker();
       if (request.mode === "change-root") {
         void spaceController.changeRoot(request.spaceId, path);
         return;
@@ -367,7 +385,7 @@ export default function App() {
         `Space ${useSpaces.getState().spaces.length + 1}`;
       void spaceController.create({ name, root: path, env: request.env });
     },
-    [pickerRequest, spaceController],
+    [closePicker, pickerRequest, spaceController],
   );
 
   const spaceTabs = useMemo(
@@ -1485,7 +1503,7 @@ export default function App() {
               env={pickerRequest.env}
               initialPath={pickerRequest.initialPath}
               mode={pickerRequest.mode}
-              onCancel={() => setPickerRequest(null)}
+              onCancel={closePicker}
               onSelect={handlePickerSelect}
             />
           ) : null}

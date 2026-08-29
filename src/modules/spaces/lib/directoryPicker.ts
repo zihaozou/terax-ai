@@ -2,6 +2,23 @@ function normalize(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
+export type PickerRequestGate = {
+  begin: () => number;
+  isCurrent: (id: number) => boolean;
+  invalidate: () => void;
+};
+
+export function createPickerRequestGate(): PickerRequestGate {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    isCurrent: (id) => id === current,
+    invalidate: () => {
+      current += 1;
+    },
+  };
+}
+
 export function joinDirectory(parent: string, child: string): string {
   return `${normalize(parent).replace(/\/+$/, "")}/${child}`;
 }
