@@ -4,6 +4,7 @@ import {
   parseWorkspaceScopeKey,
   type WorkspaceEnv,
 } from "@/modules/workspace";
+import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
 import {
   deleteSpaceData,
   newSpaceId,
@@ -26,10 +27,12 @@ type State = {
   // Per-space active tab index loaded from disk, so persistence preserves it
   // for spaces the user never visits this session.
   initialActiveIndex: Record<string, number>;
+  rootIssues: SpaceRootIssues;
   hydrate: (
     spaces: SpaceMeta[],
     activeId: string | null,
     initialActiveIndex?: Record<string, number>,
+    rootIssues?: SpaceRootIssues,
   ) => void;
   create: (input: CreateInput) => SpaceMeta;
   rename: (id: string, name: string) => void;
@@ -45,9 +48,10 @@ export const useSpaces = create<State>((set, get) => ({
   activeId: null,
   hydrated: false,
   initialActiveIndex: {},
+  rootIssues: {},
 
-  hydrate: (spaces, activeId, initialActiveIndex = {}) => {
-    set({ spaces, activeId, initialActiveIndex, hydrated: true });
+  hydrate: (spaces, activeId, initialActiveIndex = {}, rootIssues = {}) => {
+    set({ spaces, activeId, initialActiveIndex, rootIssues, hydrated: true });
   },
 
   create: (input) => {
