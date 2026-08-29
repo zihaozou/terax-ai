@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Tab } from "@/modules/tabs";
 import { spaceIdForLeaf } from "./terminalSpace";
 
-function terminalTab(input: { id: number; spaceId: string; leafId: number }): Tab {
+function terminalTab(input: {
+  id: number;
+  spaceId: string;
+  leafId: number;
+}): Tab {
   return {
     id: input.id,
     kind: "terminal",
@@ -51,6 +55,11 @@ describe("spaceIdForLeaf", () => {
   });
 
   it("returns null for an unknown leaf", () => {
-    expect(spaceIdForLeaf([terminalTab({ id: 1, spaceId: "local", leafId: 10 })], 20)).toBeNull();
+    expect(
+      spaceIdForLeaf(
+        [terminalTab({ id: 1, spaceId: "local", leafId: 10 })],
+        20,
+      ),
+    ).toBeNull();
   });
 });
