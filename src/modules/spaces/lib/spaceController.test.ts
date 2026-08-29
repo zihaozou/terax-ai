@@ -195,6 +195,24 @@ describe("createSpaceController", () => {
     ]);
   });
 
+  it("creates Space B terminals at Space B root independent of another shell cwd", async () => {
+    const createTerminal = vi.fn();
+    const controller = createSpaceController(
+      deps({
+        createTerminal,
+        createMeta: (input) => makeSpace("b", input.root, input.env),
+      }),
+    );
+
+    await controller.create({
+      name: "b",
+      root: "/space-b",
+      env: { kind: "local" },
+    });
+
+    expect(createTerminal).toHaveBeenCalledWith("b", "/space-b");
+  });
+
   it("does not create a partial Space when preparation fails", async () => {
     const createMeta = vi.fn();
     const createTerminal = vi.fn();

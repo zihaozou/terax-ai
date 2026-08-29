@@ -617,19 +617,19 @@ export function useTabs(initial?: Partial<TerminalTab>) {
   const newTabInSpace = useCallback((spaceId: string, cwd?: string) => {
     const tabId = nextIdRef.current++;
     const leafId = nextIdRef.current++;
-    setTabs((curr) => [
-      ...curr,
-      {
-        id: tabId,
-        kind: "terminal",
-        spaceId,
-        cold: true,
-        title: cwd ? basename(cwd) : "shell",
-        cwd,
-        paneTree: { kind: "leaf", id: leafId, cwd },
-        activeLeafId: leafId,
-      },
-    ]);
+    const tab: TerminalTab = {
+      id: tabId,
+      kind: "terminal",
+      spaceId,
+      cold: true,
+      title: cwd ? basename(cwd) : "shell",
+      cwd,
+      paneTree: { kind: "leaf", id: leafId, cwd },
+      activeLeafId: leafId,
+    };
+    const next = [...tabsRef.current, tab];
+    tabsRef.current = next;
+    setTabs(next);
     return tabId;
   }, []);
 
@@ -691,22 +691,20 @@ export function useTabs(initial?: Partial<TerminalTab>) {
 
   const removeTabsForSpace = useCallback(
     (spaceId: string, fallbackSpaceId: string, fallbackCwd?: string) => {
-      let toDispose: number[] = [];
-      setTabs((curr) => {
-        const plan = planSpaceRemoval(
-          curr,
-          activeIdRef.current,
-          spaceId,
-          fallbackSpaceId,
-          fallbackCwd,
-          () => nextIdRef.current++,
-        );
-        if (!plan) return curr;
-        toDispose = plan.disposeLeafIds;
-        setActiveId(plan.activeId);
-        return plan.tabs;
-      });
-      for (const lid of toDispose) disposeSession(lid);
+      const plan = planSpaceRemoval(
+        tabsRef.current,
+        activeIdRef.current,
+        spaceId,
+        fallbackSpaceId,
+        fallbackCwd,
+        () => nextIdRef.current++,
+      );
+      if (!plan) return;
+      tabsRef.current = plan.tabs;
+      activeIdRef.current = plan.activeId;
+      setTabs(plan.tabs);
+      setActiveId(plan.activeId);
+      for (const leafId of plan.disposeLeafIds) disposeSession(leafId);
     },
     [],
   );

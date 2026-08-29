@@ -53,6 +53,22 @@ describe("planFileTabOpen", () => {
     });
   });
 
+  it("keeps the owning Space selection when opening an external file", () => {
+    const plan = planFileTabOpen(
+      [terminal],
+      "/outside-space/notes.md",
+      true,
+      "one",
+      () => 3,
+    );
+
+    expect(plan.tabs[0]).toBe(terminal);
+    expect(plan.tabs[1]).toMatchObject({
+      path: "/outside-space/notes.md",
+      spaceId: "one",
+    });
+  });
+
   it("reuses files only within the requested space", () => {
     const tabs: Tab[] = [
       terminal,

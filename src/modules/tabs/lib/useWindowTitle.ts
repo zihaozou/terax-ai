@@ -31,9 +31,9 @@ function tabLabel(tab: Tab | undefined): string {
  */
 export function useWindowTitle(
   activeTab: Tab | undefined,
-  explorerRoot: string | null,
+  workspaceRoot: string | null,
 ): void {
-  const project = explorerRoot ? basename(explorerRoot) : "";
+  const project = workspaceRoot ? basename(workspaceRoot) : "";
   const label = tabLabel(activeTab);
 
   useEffect(() => {

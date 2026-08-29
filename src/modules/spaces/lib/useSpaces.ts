@@ -124,15 +124,12 @@ export const useSpaces = create<State>((set, get) => ({
 
   remove: (id) => {
     const prev = get();
-    const spaces = prev.spaces.filter((s) => s.id !== id);
-    let activeId = prev.activeId;
-    if (activeId === id) activeId = spaces[0]?.id ?? null;
+    const spaces = prev.spaces.filter((space) => space.id !== id);
     const { [id]: _, ...rootIssues } = prev.rootIssues;
-    set({ spaces, activeId, rootIssues });
+    set({ spaces, rootIssues });
     void saveSpacesList(spaces);
     void deleteSpaceData(id);
-    if (activeId !== prev.activeId) void saveActiveId(activeId);
-    return activeId;
+    return prev.activeId === id ? (spaces[0]?.id ?? null) : prev.activeId;
   },
 
   setActive: (id) => {

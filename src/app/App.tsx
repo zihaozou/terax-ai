@@ -55,10 +55,12 @@ import {
   useSourceControlContext,
 } from "@/modules/source-control";
 import {
+  createSpaceController,
   SpaceSwitcher,
   useSpacePersistence,
   useSpaces,
   useSpacesBoot,
+  validateSpaceRoot,
 } from "@/modules/spaces";
 import { StatusBar } from "@/modules/statusbar";
 import {
@@ -67,7 +69,6 @@ import {
   useTabSwitcher,
   useTabs,
   useWindowTitle,
-  useWorkspaceCwd,
 } from "@/modules/tabs";
 import { DEFAULT_SPACE_ID } from "@/modules/tabs/lib/useTabs";
 import {
@@ -237,6 +238,8 @@ export default function App() {
     launchCwd,
     launchCwdResolved,
     switchWorkspace,
+    prepareWorkspaceEnv,
+    applyWorkspaceEnv,
     adoptWorkspaceEnv,
   } = useWorkspaceSwitcher({
     tabsRef,
@@ -247,6 +250,13 @@ export default function App() {
   });
 
   const activeSpaceId = useSpaces((s) => s.activeId);
+  const activeSpace = useSpaces(
+    (state) =>
+      state.spaces.find((space) => space.id === state.activeId) ?? null,
+  );
+  const rootIssues = useSpaces((state) => state.rootIssues);
+  const activeSpaceRoot = activeSpace?.root ?? null;
+  const activeRootIssue = activeSpace ? rootIssues[activeSpace.id] : undefined;
   const spacesHydrated = useSpaces((s) => s.hydrated);
   const activeSpaceIdRef = useRef(activeSpaceId);
   useLayoutEffect(() => {
@@ -281,31 +291,39 @@ export default function App() {
     enabled: spacesHydrated,
   });
 
-  const prevSpaceRef = useRef(activeSpaceId);
-  useEffect(() => {
-    if (!spacesHydrated || !activeSpaceId) return;
-    setActiveSpaceForNewTabs(activeSpaceId);
-    const prev = prevSpaceRef.current;
-    prevSpaceRef.current = activeSpaceId;
-    if (prev === null || prev === activeSpaceId) return;
-    const meta = useSpaces
-      .getState()
-      .spaces.find((s) => s.id === activeSpaceId);
-    if (meta) void adoptWorkspaceEnv(meta.env);
-    const inSpace = tabsRef.current.filter((t) => t.spaceId === activeSpaceId);
-    if (inSpace.length === 0) return;
-    // Keep the active tab if it already belongs to the newly active space (a
-    // cross-space jump set it explicitly); else fall to the space's last tab.
-    if (inSpace.some((t) => t.id === activeId)) return;
-    setActiveId(inSpace[inSpace.length - 1].id);
-  }, [
-    activeSpaceId,
-    activeId,
-    spacesHydrated,
-    setActiveSpaceForNewTabs,
-    setActiveId,
-    adoptWorkspaceEnv,
-  ]);
+  const commitSpaceActivation = useCallback(
+    ({ spaceId, tabId }: { spaceId: string; tabId?: number }) => {
+      const inSpace = tabsRef.current.filter((tab) => tab.spaceId === spaceId);
+      const nextTabId = tabId ?? inSpace[inSpace.length - 1]?.id;
+      setActiveSpaceForNewTabs(spaceId);
+      useSpaces.getState().setActive(spaceId);
+      if (nextTabId !== undefined) setActiveId(nextTabId);
+    },
+    [setActiveId, setActiveSpaceForNewTabs],
+  );
+
+  const spaceController = useMemo(
+    () =>
+      createSpaceController({
+        getSpace: (id) =>
+          useSpaces.getState().spaces.find((space) => space.id === id) ?? null,
+        currentEnv: () => useWorkspaceEnvStore.getState().env,
+        validateRoot: validateSpaceRoot,
+        prepareEnv: prepareWorkspaceEnv,
+        applyEnv: applyWorkspaceEnv,
+        commitActive: commitSpaceActivation,
+        createMeta: (input) => useSpaces.getState().create(input),
+        createTerminal: newTabInSpace,
+        setRoot: (spaceId, root) => useSpaces.getState().setRoot(spaceId, root),
+        reportError: (message) => window.alert(message),
+      }),
+    [
+      applyWorkspaceEnv,
+      commitSpaceActivation,
+      newTabInSpace,
+      prepareWorkspaceEnv,
+    ],
+  );
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
@@ -350,13 +368,9 @@ export default function App() {
   useEditorFileSync({ tabs, tabsRef, editorRefs });
   useThemeFileEditing({ tabsRef, openFileTab });
 
-  const { explorerRoot, inheritedCwdForNewTab } = useWorkspaceCwd(
-    activeTab,
-    tabs,
-    launchCwd ?? home,
-  );
+  const explorerRoot = activeSpaceRoot;
 
-  useWindowTitle(activeTab, explorerRoot);
+  useWindowTitle(activeTab, activeSpaceRoot);
 
   useEffect(() => {
     setActiveSearchAddon(
@@ -485,25 +499,31 @@ export default function App() {
     },
   });
 
-  const cycleSpace = useCallback((delta: 1 | -1) => {
-    const { spaces, activeId: sid, setActive } = useSpaces.getState();
-    if (spaces.length < 2) return;
-    const idx = spaces.findIndex((s) => s.id === sid);
-    const next = (idx + delta + spaces.length) % spaces.length;
-    setActive(spaces[next].id);
-  }, []);
+  const cycleSpace = useCallback(
+    (delta: 1 | -1) => {
+      const { spaces, activeId: sid } = useSpaces.getState();
+      if (spaces.length < 2) return;
+      const idx = spaces.findIndex((space) => space.id === sid);
+      const next = (idx + delta + spaces.length) % spaces.length;
+      void spaceController.activate({ spaceId: spaces[next].id });
+    },
+    [spaceController],
+  );
 
   const openNewTab = useCallback(() => {
-    newTab(inheritedCwdForNewTab());
-  }, [newTab, inheritedCwdForNewTab]);
+    if (!activeSpaceRoot || activeRootIssue) return null;
+    return newTab(activeSpaceRoot);
+  }, [activeRootIssue, activeSpaceRoot, newTab]);
 
   const openNewPrivateTab = useCallback(() => {
-    newPrivateTab(inheritedCwdForNewTab());
-  }, [newPrivateTab, inheritedCwdForNewTab]);
+    if (!activeSpaceRoot || activeRootIssue) return null;
+    return newPrivateTab(activeSpaceRoot);
+  }, [activeRootIssue, activeSpaceRoot, newPrivateTab]);
 
   const openNewBlockTab = useCallback(() => {
-    newBlockTab(inheritedCwdForNewTab());
-  }, [newBlockTab, inheritedCwdForNewTab]);
+    if (!activeSpaceRoot || activeRootIssue) return null;
+    return newBlockTab(activeSpaceRoot);
+  }, [activeRootIssue, activeSpaceRoot, newBlockTab]);
 
   const launchAgentGroup = useCallback(
     (request: AgentLaunchRequest) => {
@@ -514,8 +534,9 @@ export default function App() {
         request.instances === 1
           ? launcher.label
           : `${launcher.label} × ${request.instances}`;
+      if (!activeSpaceRoot || activeRootIssue) return;
       const { leafIds: agentLeafIds } = newAgentGroupTab(
-        inheritedCwdForNewTab(),
+        activeSpaceRoot,
         title,
         request.instances,
       );
@@ -541,33 +562,23 @@ export default function App() {
         })();
       }
     },
-    [inheritedCwdForNewTab, newAgentGroupTab],
-  );
-
-  const sendCd = useCallback(
-    (path: string) => {
-      if (activeLeafId === null) return;
-      const term = terminalRefs.current.get(activeLeafId);
-      if (!term) return;
-      term.write(`cd ${quoteShellArg(path)}\r`);
-      term.focus();
-    },
-    [activeLeafId],
+    [activeRootIssue, activeSpaceRoot, newAgentGroupTab],
   );
 
   const cdInNewTab = useCallback(
     (path: string) => {
-      const tabId = newTab(path);
+      if (!activeSpaceRoot || activeRootIssue) return;
+      const tabId = newTab(activeSpaceRoot);
       setTimeout(() => {
         const tab = tabsRef.current.find((x) => x.id === tabId);
-        if (!tab || tab.kind !== "terminal") return;
+        if (tab?.kind !== "terminal") return;
         const t = terminalRefs.current.get(tab.activeLeafId);
         if (!t) return;
         t.write(`cd ${quoteShellArg(path)}\r`);
         t.focus();
       }, 80);
     },
-    [newTab],
+    [activeRootIssue, activeSpaceRoot, newTab],
   );
 
   const handleOpenFile = useCallback(
@@ -648,21 +659,6 @@ export default function App() {
         null)
       : null;
 
-  const activeFilePath = (() => {
-    if (activeTab?.kind === "editor") return activeTab.path;
-    if (activeTab?.kind === "git-diff") {
-      if (/^([A-Za-z]:|\/|\\)/.test(activeTab.path)) return activeTab.path;
-      const root = activeTab.repoRoot.replace(/[\\/]+$/, "");
-      const rel = activeTab.path.replace(/^[\\/]+/, "");
-      return `${root}/${rel}`;
-    }
-    if (activeTab?.kind === "git-commit-file") {
-      const root = activeTab.repoRoot.replace(/[\\/]+$/, "");
-      const rel = activeTab.path.replace(/^[\\/]+/, "");
-      return `${root}/${rel}`;
-    }
-    return null;
-  })();
   const explorerActiveFilePath =
     activeTab?.kind === "editor" || activeTab?.kind === "markdown"
       ? activeTab.path
@@ -700,11 +696,11 @@ export default function App() {
     useSourceControlContext({
       activeTab,
       tabs,
-      activeTerminalLeafCwd,
-      explorerRoot,
-      launchCwd,
+      activeTerminalLeafCwd: activeSpaceRoot,
+      explorerRoot: activeSpaceRoot,
+      launchCwd: activeSpaceRoot,
       launchCwdResolved,
-      home,
+      home: activeSpaceRoot,
       sidebarView,
       repositoryTarget: sourceControlRepositoryTarget,
       cycleSidebarView,
@@ -729,7 +725,7 @@ export default function App() {
   const splitActivePaneInActiveTab = useCallback(
     (dir: "row" | "col") => {
       const t = tabsRef.current.find((x) => x.id === activeId);
-      if (!t || t.kind !== "terminal") return;
+      if (t?.kind !== "terminal") return;
       splitActivePane(activeId, dir);
     },
     [activeId, splitActivePane],
@@ -772,14 +768,13 @@ export default function App() {
   // strip don't end up showing a different space than the focused pane.
   const activateAgentTarget = useCallback(
     (tabId: number, leafId: number) => {
-      const space = tabsRef.current.find((t) => t.id === tabId)?.spaceId;
-      if (space && space !== useSpaces.getState().activeId) {
-        useSpaces.getState().setActive(space);
-      }
-      setActiveId(tabId);
-      focusPane(tabId, leafId);
+      const spaceId = tabsRef.current.find((tab) => tab.id === tabId)?.spaceId;
+      if (!spaceId) return;
+      void spaceController
+        .activate({ spaceId, tabId })
+        .then((activated) => activated && focusPane(tabId, leafId));
     },
-    [setActiveId, focusPane],
+    [focusPane, spaceController],
   );
 
   const shortcutHandlers = useMemo<ShortcutHandlers>(
@@ -977,7 +972,7 @@ export default function App() {
       const tab = all.find(
         (t) => t.kind === "terminal" && hasLeaf(t.paneTree, leafId),
       );
-      if (!tab || tab.kind !== "terminal") return;
+      if (tab?.kind !== "terminal") return;
       // Last pane of the last tab: quit instead of respawning a shell.
       if (leafIds(tab.paneTree).length === 1 && all.length === 1) {
         void getCurrentWindow().close();
@@ -1031,70 +1026,78 @@ export default function App() {
   const activeCwd = activeTerminalLeafCwd;
 
   const handleNewSpace = useCallback(() => {
-    const root = activeCwd ?? home;
-    if (!root) return null;
-    const { spaces, create, setActive } = useSpaces.getState();
-    const meta = create({
-      name: `Space ${spaces.length + 1}`,
-      root,
-      env: workspaceEnv,
+    if (!activeSpace || !activeSpaceRoot || activeRootIssue) return;
+    const name = `Space ${useSpaces.getState().spaces.length + 1}`;
+    void spaceController.create({
+      name,
+      root: activeSpaceRoot,
+      env: activeSpace.env,
     });
-    setActiveSpaceForNewTabs(meta.id);
-    newTab(activeCwd ?? undefined);
-    setActive(meta.id);
-    return meta.id;
-  }, [activeCwd, home, workspaceEnv, newTab, setActiveSpaceForNewTabs]);
+  }, [activeRootIssue, activeSpace, activeSpaceRoot, spaceController]);
 
   const handleDeleteSpace = useCallback(
     (id: string) => {
+      const wasActive = useSpaces.getState().activeId === id;
       const nextSpaceId = useSpaces.getState().remove(id);
       if (!nextSpaceId) return;
-      const root = useSpaces
+      const fallback = useSpaces
         .getState()
-        .spaces.find((s) => s.id === nextSpaceId)?.root;
-      removeTabsForSpace(id, nextSpaceId, root ?? undefined);
+        .spaces.find((space) => space.id === nextSpaceId);
+      const fallbackTabs = tabsRef.current.filter(
+        (tab) => tab.spaceId === nextSpaceId,
+      );
+      const fallbackTabId = fallbackTabs[fallbackTabs.length - 1]?.id;
+      removeTabsForSpace(id, nextSpaceId, fallback?.root ?? undefined);
+      if (wasActive) {
+        void spaceController.activate({
+          spaceId: nextSpaceId,
+          tabId: fallbackTabId,
+        });
+      }
     },
-    [removeTabsForSpace],
+    [removeTabsForSpace, spaceController],
   );
 
   const handleMoveTab = useCallback(
     (tabId: number, targetSpaceId: string) => {
       if (moveTabToSpace(tabId, targetSpaceId)) {
-        useSpaces.getState().setActive(targetSpaceId);
+        void spaceController.activate({ spaceId: targetSpaceId, tabId });
       }
     },
-    [moveTabToSpace],
+    [moveTabToSpace, spaceController],
   );
 
   const handleReorderTab = useCallback(
     (tabId: number, targetTabId: number, edge: "top" | "bottom") => {
       if (reorderTab(tabId, targetTabId, edge)) {
-        const target = tabsRef.current.find((x) => x.id === targetTabId);
-        if (target) useSpaces.getState().setActive(target.spaceId);
+        const target = tabsRef.current.find((tab) => tab.id === targetTabId);
+        if (target)
+          void spaceController.activate({ spaceId: target.spaceId, tabId });
       }
     },
-    [reorderTab],
+    [reorderTab, spaceController],
   );
 
   const handleNewTabInSpace = useCallback(
     (spaceId: string) => {
-      const root = useSpaces
+      const { rootIssues } = useSpaces.getState();
+      const space = useSpaces
         .getState()
-        .spaces.find((s) => s.id === spaceId)?.root;
-      newTabInSpace(spaceId, root ?? undefined);
+        .spaces.find((candidate) => candidate.id === spaceId);
+      if (!space?.root || rootIssues[spaceId]) return;
+      newTabInSpace(spaceId, space.root);
     },
     [newTabInSpace],
   );
 
   const jumpToTab = useCallback(
     (tabId: number) => {
-      const t = tabsRef.current.find((x) => x.id === tabId);
-      if (!t) return;
-      setActiveId(tabId);
-      useSpaces.getState().setActive(t.spaceId);
+      const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+      if (!tab) return;
+      void spaceController.activate({ spaceId: tab.spaceId, tabId });
       setSwitcherOpen(false);
     },
-    [setActiveId],
+    [spaceController],
   );
 
   const spaceSwitcher = (
@@ -1102,7 +1105,8 @@ export default function App() {
       open={switcherOpen}
       onOpenChange={setSwitcherOpen}
       tabs={tabs}
-      onNewSpace={() => void handleNewSpace()}
+      onNewSpace={handleNewSpace}
+      onActivateSpace={(id) => void spaceController.activate({ spaceId: id })}
       onDeleteSpace={handleDeleteSpace}
       onNewTabInSpace={handleNewTabInSpace}
       onJumpTab={jumpToTab}
@@ -1121,7 +1125,7 @@ export default function App() {
             activeId,
             searchTarget,
             explorerRoot,
-            home,
+            home: null,
             openNewTab,
             openNewBlock: openNewBlockTab,
             openNewPrivate: openNewPrivateTab,
@@ -1141,8 +1145,8 @@ export default function App() {
             spaces: useSpaces.getState().spaces,
             activeSpaceId,
             openSpacesOverview: () => setSwitcherOpen(true),
-            newSpace: () => void handleNewSpace(),
-            switchSpace: (id) => useSpaces.getState().setActive(id),
+            newSpace: handleNewSpace,
+            switchSpace: (id) => void spaceController.activate({ spaceId: id }),
           })
         : [],
     [
@@ -1151,7 +1155,6 @@ export default function App() {
       activeId,
       searchTarget,
       explorerRoot,
-      home,
       openNewTab,
       openNewBlockTab,
       openNewPrivateTab,
@@ -1164,6 +1167,7 @@ export default function App() {
       toggleHiddenFiles,
       activeSpaceId,
       handleNewSpace,
+      spaceController.activate,
     ],
   );
 
@@ -1193,13 +1197,11 @@ export default function App() {
       focus: boolean;
       spaceId: string;
     }) => {
-      if (focus && useSpaces.getState().activeId !== spaceId) {
-        useSpaces.getState().setActive(spaceId);
-      }
       const id = openFileTab(path, true, {
         spaceId,
-        activate: focus,
+        activate: false,
       });
+      if (focus) void spaceController.activate({ spaceId, tabId: id });
       const editor = editorRefs.current.get(id);
       if (line !== undefined) {
         if (editor) editor.gotoLine(line, { focus });
@@ -1210,7 +1212,7 @@ export default function App() {
       }
       return id;
     },
-    [openFileTab],
+    [openFileTab, spaceController],
   );
 
   useControlBridge({
@@ -1382,10 +1384,12 @@ export default function App() {
 
           {!zenMode && (
             <StatusBar
-              cwd={activeCwd}
-              filePath={activeFilePath}
+              cwd={activeSpaceRoot}
               home={home}
-              onCd={sendCd}
+              onCd={(path) => {
+                if (activeSpace)
+                  void spaceController.changeRoot(activeSpace.id, path);
+              }}
               onWorkspaceChange={handleWorkspaceChange}
               privateActive={
                 activeTab?.kind === "terminal" && activeTab.private === true
@@ -1419,7 +1423,7 @@ export default function App() {
           <NewEditorDialog
             open={newEditorOpen}
             onOpenChange={setNewEditorOpen}
-            rootPath={explorerRoot ?? home}
+            rootPath={activeSpaceRoot}
             onCreated={(path) => openFileTab(path)}
           />
 
