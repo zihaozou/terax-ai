@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { planFileTabOpen, type Tab } from "@/modules/tabs/lib/useTabs";
 import type { WorkspaceEnv } from "@/modules/workspace";
 import {
   createSpaceController,
@@ -211,6 +212,72 @@ describe("createSpaceController", () => {
     });
 
     expect(createTerminal).toHaveBeenCalledWith("b", "/space-b");
+  });
+
+  it("keeps Space roots stable across external file and cross-Space navigation", async () => {
+    const roots = new Map([
+      ["a", "/a"],
+      ["b", "/b"],
+    ]);
+    let active: { spaceId: string; tabId?: number } | null = {
+      spaceId: "a",
+      tabId: 1,
+    };
+    const setRoot = vi.fn();
+    const tabs: Tab[] = [
+      {
+        id: 1,
+        kind: "terminal",
+        title: "shell",
+        spaceId: "a",
+        cwd: "/a/deep",
+        paneTree: { kind: "leaf", id: 10 },
+        activeLeafId: 10,
+      },
+      {
+        id: 2,
+        kind: "editor",
+        title: "space-b.ts",
+        path: "/b/space-b.ts",
+        spaceId: "b",
+        dirty: false,
+        preview: false,
+      },
+    ];
+    const controller = createSpaceController(
+      deps({
+        getSpace: (id) => {
+          const root = roots.get(id);
+          return root ? makeSpace(id, root) : null;
+        },
+        commitActive: (target) => {
+          active = target;
+        },
+        setRoot,
+      }),
+    );
+
+    const externalFile = planFileTabOpen(
+      tabs,
+      "/outside/notes.md",
+      true,
+      "a",
+      () => 3,
+    );
+    expect(externalFile.tabs[2]).toMatchObject({
+      path: "/outside/notes.md",
+      spaceId: "a",
+    });
+    await expect(controller.activate({ spaceId: "b", tabId: 2 })).resolves.toBe(
+      true,
+    );
+
+    expect(setRoot).not.toHaveBeenCalled();
+    expect([...roots.entries()]).toEqual([
+      ["a", "/a"],
+      ["b", "/b"],
+    ]);
+    expect(active).toEqual({ spaceId: "b", tabId: 2 });
   });
 
   it("does not create a partial Space when preparation fails", async () => {
