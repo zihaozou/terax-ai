@@ -49,8 +49,7 @@ type Props = {
   open: boolean;
   onRequestClose: () => void;
   onActiveChange?: (active: boolean) => void;
-  onRevealInTerminal?: (path: string) => void;
-  onOpenInSourceControl?: (path: string) => void;
+  onOpenInNewSpace?: (path: string) => void;
   onOpenGitHistory?: (path: string) => void;
 };
 
@@ -67,8 +66,7 @@ export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(
       open,
       onRequestClose,
       onActiveChange,
-      onRevealInTerminal,
-      onOpenInSourceControl,
+      onOpenInNewSpace,
       onOpenGitHistory,
     }: Props,
     ref,
@@ -290,22 +288,14 @@ export const ExplorerSearch = forwardRef<ExplorerSearchHandle, Props>(
                             Open
                           </ContextMenuItem>
                         )}
-                        {hit.is_dir && onRevealInTerminal && (
+                        {hit.is_dir && onOpenInNewSpace ? (
                           <ContextMenuItem
                             className={COMPACT_ITEM}
-                            onSelect={() => onRevealInTerminal(hit.path)}
+                            onSelect={() => onOpenInNewSpace(hit.path)}
                           >
-                            Open in Terminal
+                            Open in New Space
                           </ContextMenuItem>
-                        )}
-                        {hit.is_dir && onOpenInSourceControl && (
-                          <ContextMenuItem
-                            className={COMPACT_ITEM}
-                            onSelect={() => onOpenInSourceControl(hit.path)}
-                          >
-                            Open in Source Control
-                          </ContextMenuItem>
-                        )}
+                        ) : null}
                         {hit.is_dir && onOpenGitHistory && (
                           <ContextMenuItem
                             className={COMPACT_ITEM}

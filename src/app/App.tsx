@@ -27,6 +27,7 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
+import { spaceNameFromRoot } from "@/modules/explorer/lib/contextActions";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
   Header,
@@ -202,8 +203,7 @@ export default function App() {
     });
   }, [sidecarHydrated, sidecarEnabled, sidecarModelDir, sidecarPort]);
 
-  // Mirror `tabs` into a ref so callbacks scheduled with `setTimeout`
-  // (e.g. cdInNewTab) read the latest pane state instead of a stale closure.
+  // Mirror tabs into a ref so callbacks use the latest pane state.
   const tabsRef = useRef(tabs);
   const activeIdRef = useRef(activeId);
 
@@ -743,7 +743,6 @@ export default function App() {
   }, [openSidebarView]);
   const {
     repositoryTarget: sourceControlRepositoryTarget,
-    openInSourceControl: handleOpenRepositoryInSourceControl,
     openGitHistory: handleOpenGitHistoryForPath,
     followActiveContext: handleFollowRepositoryContext,
   } = useRepositoryTargeting({
@@ -1094,6 +1093,18 @@ export default function App() {
     void openCreateSpacePicker(activeSpace.env);
   }, [activeSpace, openCreateSpacePicker]);
 
+  const handleOpenInNewSpace = useCallback(
+    (path: string) => {
+      if (!activeSpace) return;
+      void spaceController.create({
+        name: spaceNameFromRoot(path),
+        root: path,
+        env: activeSpace.env,
+      });
+    },
+    [activeSpace, spaceController],
+  );
+
   const handleDeleteSpace = useCallback(
     (id: string) => {
       const state = useSpaces.getState();
@@ -1379,10 +1390,7 @@ export default function App() {
                           onOpenFile={handleOpenFile}
                           onPathRenamed={handlePathRenamed}
                           onPathDeleted={handlePathDeleted}
-                          onRevealInTerminal={cdInNewTab}
-                          onOpenInSourceControl={
-                            handleOpenRepositoryInSourceControl
-                          }
+                          onOpenInNewSpace={handleOpenInNewSpace}
                           onOpenGitHistory={handleOpenGitHistoryForPath}
                           pathDropTarget={terminalPathDropTarget}
                         />
