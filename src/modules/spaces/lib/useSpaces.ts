@@ -10,6 +10,13 @@ import {
   type SpaceMeta,
 } from "./store";
 
+export function canPersistSpaceState(
+  hydrated: boolean,
+  persistenceBlocked: boolean,
+): boolean {
+  return hydrated && !persistenceBlocked;
+}
+
 type CreateInput = {
   id?: string;
   name: string;
@@ -21,6 +28,7 @@ type State = {
   spaces: SpaceMeta[];
   activeId: string | null;
   hydrated: boolean;
+  persistenceBlocked: boolean;
   // Per-space active tab index loaded from disk, so persistence preserves it
   // for spaces the user never visits this session.
   initialActiveIndex: Record<string, number>;
@@ -30,6 +38,7 @@ type State = {
     activeId: string | null,
     initialActiveIndex?: Record<string, number>,
     rootIssues?: SpaceRootIssues,
+    persistenceBlocked?: boolean,
   ) => void;
   create: (input: CreateInput) => SpaceMeta;
   rename: (id: string, name: string) => void;
@@ -46,11 +55,25 @@ export const useSpaces = create<State>((set, get) => ({
   spaces: [],
   activeId: null,
   hydrated: false,
+  persistenceBlocked: false,
   initialActiveIndex: {},
   rootIssues: {},
 
-  hydrate: (spaces, activeId, initialActiveIndex = {}, rootIssues = {}) => {
-    set({ spaces, activeId, initialActiveIndex, rootIssues, hydrated: true });
+  hydrate: (
+    spaces,
+    activeId,
+    initialActiveIndex = {},
+    rootIssues = {},
+    persistenceBlocked = false,
+  ) => {
+    set({
+      spaces,
+      activeId,
+      initialActiveIndex,
+      rootIssues,
+      hydrated: true,
+      persistenceBlocked,
+    });
   },
 
   create: (input) => {

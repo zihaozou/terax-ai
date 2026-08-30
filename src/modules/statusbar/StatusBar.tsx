@@ -17,9 +17,8 @@ type Props = {
   home: string | null;
   issue?: SpaceRootIssue;
   env: WorkspaceEnv | null;
-  filePath?: string | null;
+  filePath: string | null;
   onChangeRoot: (path: string) => void;
-  onChooseFolder: () => void;
   onCreateInEnv: (env: WorkspaceEnv) => void;
   privateActive: boolean;
 };
@@ -31,7 +30,6 @@ export function StatusBar({
   env,
   filePath,
   onChangeRoot,
-  onChooseFolder,
   onCreateInEnv,
   privateActive,
 }: Props) {
@@ -45,11 +43,11 @@ export function StatusBar({
           root={root}
           home={home}
           issue={issue}
+          env={env}
           onChangeRoot={onChangeRoot}
-          onChooseFolder={onChooseFolder}
         />
-        <LspStatusPill filePath={filePath ?? null} />
-        <DiagnosticsBadge filePath={filePath ?? null} />
+        <LspStatusPill filePath={filePath} />
+        <DiagnosticsBadge filePath={filePath} />
         {privateActive ? (
           <Tooltip>
             <TooltipTrigger asChild>

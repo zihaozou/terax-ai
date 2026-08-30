@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/resizable";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { consumeLaunchFiles, getLaunchDir } from "@/lib/launchDir";
+import { consumeLaunchFiles } from "@/lib/launchDir";
 import { native } from "@/lib/native";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { useZoom } from "@/lib/useZoom";
@@ -57,16 +57,16 @@ import {
   useSourceControlContext,
 } from "@/modules/source-control";
 import {
+  canPersistSpaceState,
   createSpaceController,
-  SpaceDirectoryPicker,
-  SpaceRootRecovery,
+  nextSpaceName,
   SpaceSwitcher,
   useSpacePersistence,
   useSpaces,
   useSpacesBoot,
+  usableActiveSpaceRoot,
   validateSpaceRoot,
 } from "@/modules/spaces";
-import { createPickerRequestGate } from "@/modules/spaces/lib/directoryPicker";
 import { deleteSpaceAfterActivation } from "@/modules/spaces/lib/spaceDeletion";
 import { StatusBar } from "@/modules/statusbar";
 import {
@@ -124,15 +124,6 @@ import { useAppCloseGuard } from "./hooks/useAppCloseGuard";
 import { useTabCloseGuards } from "./hooks/useTabCloseGuards";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 
-type PickerRequest =
-  | {
-      mode: "change-root";
-      spaceId: string;
-      env: WorkspaceEnv;
-      initialPath: string;
-    }
-  | { mode: "create-space"; env: WorkspaceEnv; initialPath: string };
-
 export default function App() {
   const rootIssues = useSpaces((state) => state.rootIssues);
   const spaces = useSpaces((state) => state.spaces);
@@ -179,11 +170,7 @@ export default function App() {
     splitActivePane,
     closeActivePane,
     closePaneByLeaf,
-  } = useTabs(
-    getLaunchDir() ? { cwd: getLaunchDir() } : undefined,
-    rootIssues,
-    spaceRoots,
-  );
+  } = useTabs(undefined, rootIssues, spaceRoots);
 
   // Hydrate the cross-window preference store. This is the main window's only
   // unconditional hydration point — without it every usePreferencesStore
@@ -250,7 +237,6 @@ export default function App() {
   const setWorkspaceEnv = useWorkspaceEnvStore((s) => s.setEnv);
   const {
     home,
-    launchCwd,
     launchCwdResolved,
     prepareWorkspaceEnv,
     applyWorkspaceEnv,
@@ -262,9 +248,10 @@ export default function App() {
     (state) =>
       state.spaces.find((space) => space.id === state.activeId) ?? null,
   );
-  const activeSpaceRoot = activeSpace?.root ?? null;
   const activeRootIssue = activeSpace ? rootIssues[activeSpace.id] : undefined;
+  const activeSpaceRoot = usableActiveSpaceRoot(activeSpace, rootIssues);
   const spacesHydrated = useSpaces((s) => s.hydrated);
+  const spacePersistenceBlocked = useSpaces((s) => s.persistenceBlocked);
   const activeSpaceIdRef = useRef(activeSpaceId);
   useLayoutEffect(() => {
     tabsRef.current = tabs;
@@ -273,7 +260,6 @@ export default function App() {
   }, [tabs, activeId, activeSpaceId]);
   useSpacesBoot({
     ready: launchCwdResolved,
-    launchCwd,
     home,
     allocId,
     replaceTabs,
@@ -286,7 +272,7 @@ export default function App() {
     tabs,
     activeId,
     activeSpaceId: activeSpaceId ?? DEFAULT_SPACE_ID,
-    enabled: spacesHydrated,
+    enabled: canPersistSpaceState(spacesHydrated, spacePersistenceBlocked),
   });
 
   const commitSpaceActivation = useCallback(
@@ -324,79 +310,6 @@ export default function App() {
   );
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [pickerRequest, setPickerRequest] = useState<PickerRequest | null>(
-    null,
-  );
-  const pickerRequestGate = useRef(createPickerRequestGate()).current;
-
-  const closePicker = useCallback(() => {
-    pickerRequestGate.invalidate();
-    setPickerRequest(null);
-  }, [pickerRequestGate]);
-
-  const openCreateSpacePicker = useCallback(
-    async (env: WorkspaceEnv) => {
-      const id = pickerRequestGate.begin();
-      try {
-        const initialPath = await spaceController.homeForEnv(env);
-        if (pickerRequestGate.isCurrent(id)) {
-          setPickerRequest({ mode: "create-space", env, initialPath });
-        }
-      } catch (error) {
-        if (pickerRequestGate.isCurrent(id)) {
-          window.alert(`Unable to prepare Space environment: ${String(error)}`);
-        }
-      }
-    },
-    [pickerRequestGate, spaceController],
-  );
-
-  const openChangeRootPicker = useCallback(async () => {
-    const id = pickerRequestGate.begin();
-    if (!activeSpace) return;
-    try {
-      const initialPath =
-        activeSpaceRoot ??
-        activeRootIssue?.candidate ??
-        (await spaceController.homeForEnv(activeSpace.env));
-      if (pickerRequestGate.isCurrent(id)) {
-        setPickerRequest({
-          mode: "change-root",
-          spaceId: activeSpace.id,
-          env: activeSpace.env,
-          initialPath,
-        });
-      }
-    } catch (error) {
-      if (pickerRequestGate.isCurrent(id)) {
-        window.alert(`Unable to prepare folder picker: ${String(error)}`);
-      }
-    }
-  }, [
-    activeRootIssue?.candidate,
-    activeSpace,
-    activeSpaceRoot,
-    pickerRequestGate,
-    spaceController,
-  ]);
-
-  const handlePickerSelect = useCallback(
-    (path: string) => {
-      const request = pickerRequest;
-      if (!request) return;
-      closePicker();
-      if (request.mode === "change-root") {
-        void spaceController.changeRoot(request.spaceId, path);
-        return;
-      }
-      const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
-      const name =
-        segments[segments.length - 1] ??
-        `Space ${useSpaces.getState().spaces.length + 1}`;
-      void spaceController.create({ name, root: path, env: request.env });
-    },
-    [closePicker, pickerRequest, spaceController],
-  );
 
   const spaceTabs = useMemo(
     () => tabs.filter((t) => t.spaceId === (activeSpaceId ?? DEFAULT_SPACE_ID)),
@@ -1102,10 +1015,18 @@ export default function App() {
 
   const activeCwd = activeTerminalLeafCwd;
 
+  const createSpaceAtHome = useCallback(
+    (env: WorkspaceEnv) => {
+      const name = nextSpaceName(useSpaces.getState().spaces);
+      void spaceController.createAtHome({ name, env });
+    },
+    [spaceController],
+  );
+
   const handleNewSpace = useCallback(() => {
     if (!activeSpace) return;
-    void openCreateSpacePicker(activeSpace.env);
-  }, [activeSpace, openCreateSpacePicker]);
+    createSpaceAtHome(activeSpace.env);
+  }, [activeSpace, createSpaceAtHome]);
 
   const handleOpenInNewSpace = useCallback(
     (path: string) => {
@@ -1394,30 +1315,20 @@ export default function App() {
                       className="min-h-0 flex-1 terax-panel-in"
                     >
                       {sidebarView === "explorer" ? (
-                        activeRootIssue && activeSpace ? (
-                          <SpaceRootRecovery
-                            space={activeSpace}
-                            issue={activeRootIssue}
-                            onChooseFolder={() => void openChangeRootPicker()}
-                          />
-                        ) : (
-                          <FileExplorer
-                            ref={explorerRef}
-                            rootPath={explorerRoot}
-                            gitStatus={
-                              explorerGitDecorations
-                                ? sourceControl.status
-                                : null
-                            }
-                            activeFilePath={explorerActiveFilePath}
-                            onOpenFile={handleOpenFile}
-                            onPathRenamed={handlePathRenamed}
-                            onPathDeleted={handlePathDeleted}
-                            onOpenInNewSpace={handleOpenInNewSpace}
-                            onOpenGitHistory={handleOpenGitHistoryForPath}
-                            pathDropTarget={terminalPathDropTarget}
-                          />
-                        )
+                        <FileExplorer
+                          ref={explorerRef}
+                          rootPath={explorerRoot}
+                          gitStatus={
+                            explorerGitDecorations ? sourceControl.status : null
+                          }
+                          activeFilePath={explorerActiveFilePath}
+                          onOpenFile={handleOpenFile}
+                          onPathRenamed={handlePathRenamed}
+                          onPathDeleted={handlePathDeleted}
+                          onOpenInNewSpace={handleOpenInNewSpace}
+                          onOpenGitHistory={handleOpenGitHistoryForPath}
+                          pathDropTarget={terminalPathDropTarget}
+                        />
                       ) : (
                         <SourceControlPanel
                           key={sourceControl.contextPath ?? "no-source-control"}
@@ -1482,12 +1393,12 @@ export default function App() {
               home={home}
               issue={activeRootIssue}
               env={activeSpace?.env ?? null}
+              filePath={explorerActiveFilePath}
               onChangeRoot={(path) => {
                 if (activeSpace)
                   void spaceController.changeRoot(activeSpace.id, path);
               }}
-              onChooseFolder={() => void openChangeRootPicker()}
-              onCreateInEnv={(env) => void openCreateSpacePicker(env)}
+              onCreateInEnv={createSpaceAtHome}
               privateActive={
                 activeTab?.kind === "terminal" && activeTab.private === true
               }
@@ -1525,17 +1436,6 @@ export default function App() {
           />
 
           <UpdaterDialog />
-
-          {pickerRequest ? (
-            <SpaceDirectoryPicker
-              open
-              env={pickerRequest.env}
-              initialPath={pickerRequest.initialPath}
-              mode={pickerRequest.mode}
-              onCancel={closePicker}
-              onSelect={handlePickerSelect}
-            />
-          ) : null}
 
           <CloseDialogs
             tabs={tabs}

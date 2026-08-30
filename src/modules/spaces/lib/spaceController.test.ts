@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { planFileTabOpen, type Tab } from "@/modules/tabs/lib/useTabs";
 import type { WorkspaceEnv } from "@/modules/workspace";
-import {
-  createSpaceController,
-  type PreparedWorkspace,
-  type SpaceControllerDeps,
+import * as spaceControllerModule from "@/modules/spaces/lib/spaceController";
+import type {
+  PreparedWorkspace,
+  SpaceController,
+  SpaceControllerDeps,
 } from "@/modules/spaces/lib/spaceController";
 import type { SpaceMeta } from "@/modules/spaces/lib/store";
+
+const { createSpaceController } = spaceControllerModule;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -49,6 +52,24 @@ function deps(
     ...overrides,
   };
 }
+
+describe("nextSpaceName", () => {
+  it("chooses a number above existing generic Space names", () => {
+    const nextSpaceName = (
+      spaceControllerModule as typeof spaceControllerModule & {
+        nextSpaceName(spaces: SpaceMeta[]): string;
+      }
+    ).nextSpaceName;
+
+    expect(nextSpaceName([])).toBe("Space 1");
+    expect(
+      nextSpaceName([
+        { ...makeSpace("b", "/b"), name: "Space 3" },
+        { ...makeSpace("c", "/c"), name: "Project" },
+      ]),
+    ).toBe("Space 4");
+  });
+});
 
 describe("createSpaceController", () => {
   it("does not expose a Space until its environment is prepared", async () => {
@@ -196,6 +217,52 @@ describe("createSpaceController", () => {
     ]);
   });
 
+  it("creates a new Space at its prepared environment Home", async () => {
+    const events: string[] = [];
+    const controller = createSpaceController(
+      deps({
+        prepareEnv: async (env) => {
+          events.push("prepare-env");
+          return { env, home: "/Users/me" };
+        },
+        validateRoot: async (path) => {
+          events.push(`validate:${path}`);
+          return "/canonical-home";
+        },
+        createMeta: (input) => {
+          events.push(`create-meta:${input.name}:${input.root}`);
+          return makeSpace("created", input.root, input.env);
+        },
+        createTerminal: (spaceId, root) => {
+          events.push(`create-terminal:${spaceId}:${root}`);
+          return 1;
+        },
+        applyEnv: () => events.push("apply-env"),
+        commitActive: ({ spaceId }) => events.push(`commit:${spaceId}`),
+      }),
+    );
+    const createAtHome = (
+      controller as SpaceController & {
+        createAtHome(input: {
+          name: string;
+          env: WorkspaceEnv;
+        }): Promise<SpaceMeta | null>;
+      }
+    ).createAtHome;
+
+    await expect(
+      createAtHome({ name: "Space 4", env: { kind: "local" } }),
+    ).resolves.toMatchObject({ id: "created", root: "/canonical-home" });
+    expect(events).toEqual([
+      "prepare-env",
+      "validate:/Users/me",
+      "create-meta:Space 4:/canonical-home",
+      "create-terminal:created:/canonical-home",
+      "apply-env",
+      "commit:created",
+    ]);
+  });
+
   it("creates Space B terminals at Space B root independent of another shell cwd", async () => {
     const createTerminal = vi.fn();
     const controller = createSpaceController(
@@ -320,15 +387,5 @@ describe("createSpaceController", () => {
     await expect(controller.changeRoot("a", "/blocked")).resolves.toBe(false);
     expect(setRoot).not.toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledOnce();
-  });
-
-  it("prepares picker homes without applying their environment", async () => {
-    const applyEnv = vi.fn();
-    const controller = createSpaceController(deps({ applyEnv }));
-
-    await expect(
-      controller.homeForEnv({ kind: "wsl", distro: "Ubuntu" }),
-    ).resolves.toBe("/home/me");
-    expect(applyEnv).not.toHaveBeenCalled();
   });
 });

@@ -10,214 +10,217 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { native } from "@/lib/native";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { SpaceRootIssue } from "@/modules/spaces/lib/spaceRoot";
+import { type WorkspaceEnv, workspaceScopeKey } from "@/modules/workspace";
 import {
-  ArrowDown01Icon,
   Folder01Icon,
   Home03Icon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useState } from "react";
-import { segmentsFromCwd } from "./lib/pathUtils";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  createLatestRequestGate,
+  horizontalWheelDelta,
+  joinCanonicalChild,
+  listSubdirsForEnv,
+  scrollBreadcrumbToEnd,
+  segmentsFromCwd,
+  type Segment,
+} from "./lib/pathUtils";
 
 type Props = {
   root: string | null;
   home: string | null;
   issue?: SpaceRootIssue;
+  env: WorkspaceEnv | null;
   onChangeRoot: (path: string) => void;
-  onChooseFolder: () => void;
 };
 
 export function SpaceRootBreadcrumb({
   root,
   home,
   issue,
+  env,
   onChangeRoot,
-  onChooseFolder,
 }: Props) {
-  if (issue) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!root) return;
+    const element = scrollRef.current;
+    if (element) scrollBreadcrumbToEnd(element);
+  }, [root]);
+
+  if (issue || !root || !env) {
     return (
-      <div className="flex min-w-0 items-center gap-2 text-xs">
-        <span
-          className="truncate text-destructive"
-          title={issue.candidate ?? undefined}
-        >
-          Root unavailable{issue.candidate ? `: ${issue.candidate}` : ""}
+      <div className="min-w-0 text-xs text-destructive" role="status">
+        <span className="block truncate" title={issue?.candidate ?? undefined}>
+          Home unavailable{issue?.candidate ? `: ${issue.candidate}` : ""}
         </span>
-        <button
-          type="button"
-          className="shrink-0 rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          onClick={onChooseFolder}
-        >
-          Choose folder
-        </button>
+        {issue?.message ? (
+          <span className="block truncate text-[10px]" title={issue.message}>
+            {issue.message}
+          </span>
+        ) : null}
       </div>
     );
   }
 
-  if (!root) {
-    return (
-      <button
-        type="button"
-        className="text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        onClick={onChooseFolder}
-      >
-        Choose folder
-      </button>
-    );
-  }
-
   const segments = segmentsFromCwd(root, home);
-  const current = segments[segments.length - 1];
-  const parents = segments.slice(0, -1);
-  const firstParent = parents[0];
-  const middleParents = parents.slice(1);
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
-      <Breadcrumb>
-        <BreadcrumbList className="gap-1 text-xs sm:gap-1.5">
-          {firstParent ? (
-            <BreadcrumbSegment
-              label={firstParent.label}
-              isHome={firstParent.isHome}
-              onClick={() => onChangeRoot(firstParent.fullPath)}
-            />
-          ) : null}
-          {middleParents.length > 0 ? (
-            <CollapsedSegments
-              segments={middleParents}
-              onChangeRoot={onChangeRoot}
-            />
-          ) : null}
-          {middleParents.map((segment) => (
-            <span key={segment.fullPath} className="contents max-md:hidden">
+    <div
+      ref={scrollRef}
+      className="min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      onWheel={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollWidth <= element.clientWidth) return;
+        const delta = horizontalWheelDelta(event.deltaX, event.deltaY);
+        if (delta === 0) return;
+        element.scrollLeft += delta;
+        event.preventDefault();
+      }}
+    >
+      <Breadcrumb className="w-max">
+        <BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1.5">
+          {segments.map((segment, index) => (
+            <Fragment key={segment.fullPath}>
+              {index > 0 ? (
+                <BreadcrumbSeparator className="[&>svg]:size-3" />
+              ) : null}
               <BreadcrumbSegment
-                label={segment.label}
-                isHome={segment.isHome}
-                onClick={() => onChangeRoot(segment.fullPath)}
+                segment={segment}
+                current={index === segments.length - 1}
+                onChangeRoot={onChangeRoot}
               />
-            </span>
+            </Fragment>
           ))}
+          <BreadcrumbSeparator className="[&>svg]:size-3" />
           <BreadcrumbItem>
-            <CurrentSegmentDropdown
-              label={current.label}
-              path={current.fullPath}
+            <ChildDirectoryDropdown
+              key={`${workspaceScopeKey(env)}\0${root}`}
+              path={root}
+              env={env}
               onChangeRoot={onChangeRoot}
-              onChooseFolder={onChooseFolder}
             />
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      <button
-        type="button"
-        className="shrink-0 rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        onClick={onChooseFolder}
-      >
-        Choose folder
-      </button>
     </div>
   );
 }
 
 function BreadcrumbSegment({
-  label,
-  isHome,
-  onClick,
+  segment,
+  current,
+  onChangeRoot,
 }: {
-  label: string;
-  isHome: boolean;
-  onClick: () => void;
+  segment: Segment;
+  current: boolean;
+  onChangeRoot: (path: string) => void;
 }) {
+  const label = segment.isHome ? "Home" : segment.label;
+
   return (
-    <>
-      <BreadcrumbItem>
-        <BreadcrumbLink asChild>
-          <button type="button" onClick={onClick} className="cursor-pointer">
-            <Badge
-              variant="outline"
-              className="gap-1 text-muted-foreground hover:text-foreground"
-            >
-              {isHome ? (
-                <HugeiconsIcon
-                  icon={Home03Icon}
-                  className="size-3"
-                  strokeWidth={1.75}
-                />
-              ) : null}
-              {isHome ? "Home" : label}
-            </Badge>
-          </button>
-        </BreadcrumbLink>
-      </BreadcrumbItem>
-      <BreadcrumbSeparator className="[&>svg]:size-3" />
-    </>
+    <BreadcrumbItem>
+      <BreadcrumbLink asChild>
+        <button
+          type="button"
+          aria-current={current ? "page" : undefined}
+          title={segment.fullPath}
+          onClick={() => onChangeRoot(segment.fullPath)}
+          className="cursor-pointer"
+        >
+          <Badge
+            variant="outline"
+            className="gap-1 whitespace-nowrap text-muted-foreground hover:text-foreground"
+          >
+            {segment.isHome ? (
+              <HugeiconsIcon
+                icon={Home03Icon}
+                className="size-3"
+                strokeWidth={1.75}
+              />
+            ) : null}
+            {label}
+          </Badge>
+        </button>
+      </BreadcrumbLink>
+    </BreadcrumbItem>
   );
 }
 
-function CurrentSegmentDropdown({
-  label,
+function ChildDirectoryDropdown({
   path,
+  env,
   onChangeRoot,
-  onChooseFolder,
 }: {
-  label: string;
   path: string;
+  env: WorkspaceEnv;
   onChangeRoot: (path: string) => void;
-  onChooseFolder: () => void;
 }) {
   const showHidden = usePreferencesStore((state) => state.showHidden);
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestGate = useRef(createLatestRequestGate()).current;
 
   const load = useCallback(async () => {
+    const id = requestGate.begin();
+    setChildren(null);
     setError(null);
     try {
-      setChildren(await native.listSubdirs(path, showHidden));
+      const next = await listSubdirsForEnv(
+        native.listSubdirs,
+        path,
+        showHidden,
+        env,
+      );
+      if (requestGate.isCurrent(id)) setChildren(next);
     } catch (reason) {
+      if (!requestGate.isCurrent(id)) return;
       setError(String(reason));
       setChildren([]);
     }
-  }, [path, showHidden]);
+  }, [env, path, requestGate, showHidden]);
 
   useEffect(() => {
-    if (open) void load();
-  }, [load, open]);
+    if (open) {
+      void load();
+      return;
+    }
+    requestGate.invalidate();
+  }, [load, open, requestGate]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1"
+          aria-label={`Choose a subfolder of ${path}`}
+          title="Choose a subfolder"
+          className="flex items-center rounded-sm px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1"
         >
-          {label === "~" ? (
-            <>
-              <HugeiconsIcon
-                icon={Home03Icon}
-                className="size-3"
-                strokeWidth={1.75}
-              />
-              Home
-            </>
-          ) : (
-            label
-          )}
           <HugeiconsIcon
-            icon={ArrowDown01Icon}
-            className="size-3 opacity-70"
-            strokeWidth={2}
+            icon={MoreHorizontalIcon}
+            className="size-3.5"
+            strokeWidth={1.75}
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+      <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
         {children === null ? (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
             Loading...
@@ -230,9 +233,7 @@ function CurrentSegmentDropdown({
           children.map((name) => (
             <DropdownMenuItem
               key={name}
-              onSelect={() =>
-                onChangeRoot(`${path.replace(/\/$/, "")}/${name}`)
-              }
+              onSelect={() => onChangeRoot(joinCanonicalChild(path, name))}
             >
               <HugeiconsIcon
                 icon={Folder01Icon}
@@ -243,59 +244,7 @@ function CurrentSegmentDropdown({
             </DropdownMenuItem>
           ))
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onChooseFolder}>
-          Choose Folder...
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function CollapsedSegments({
-  segments,
-  onChangeRoot,
-}: {
-  segments: { fullPath: string; label: string; isHome: boolean }[];
-  onChangeRoot: (path: string) => void;
-}) {
-  return (
-    <span className="contents md:hidden">
-      <BreadcrumbItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              title="Show parent folders"
-              className="flex items-center rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <HugeiconsIcon
-                icon={MoreHorizontalIcon}
-                className="size-3"
-                strokeWidth={1.75}
-              />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-44">
-            {segments.map((segment) => (
-              <DropdownMenuItem
-                key={segment.fullPath}
-                onSelect={() => onChangeRoot(segment.fullPath)}
-              >
-                <HugeiconsIcon
-                  icon={segment.isHome ? Home03Icon : Folder01Icon}
-                  className="size-3.5 text-muted-foreground"
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">
-                  {segment.isHome ? "Home" : segment.label}
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </BreadcrumbItem>
-      <BreadcrumbSeparator className="[&>svg]:size-3" />
-    </span>
   );
 }

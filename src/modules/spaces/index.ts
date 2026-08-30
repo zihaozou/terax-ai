@@ -1,5 +1,4 @@
-export type { DirectoryPickerMode } from "./components/SpaceDirectoryPicker";
-export { SpaceDirectoryPicker } from "./components/SpaceDirectoryPicker";
+export { usableActiveSpaceRoot } from "./lib/activeSpace";
 export type { SpaceRootFs } from "./lib/rootValidation";
 export { validateSpaceRoot } from "./lib/rootValidation";
 export type {
@@ -7,11 +6,16 @@ export type {
   SpaceController,
   SpaceControllerDeps,
 } from "./lib/spaceController";
-export { createSpaceController } from "./lib/spaceController";
+export {
+  createSpaceController,
+  nextSpaceName,
+} from "./lib/spaceController";
 export type { SpaceMeta } from "./lib/store";
 export { useSpacePersistence } from "./lib/useSpacePersistence";
-export { useSpaces } from "./lib/useSpaces";
+export {
+  canPersistSpaceState,
+  useSpaces,
+} from "./lib/useSpaces";
 export { useSpacesBoot } from "./lib/useSpacesBoot";
 export { SpaceAvatar } from "./SpaceAvatar";
-export { SpaceRootRecovery } from "./components/SpaceRootRecovery";
 export { SpaceSwitcher } from "./SpaceSwitcher";

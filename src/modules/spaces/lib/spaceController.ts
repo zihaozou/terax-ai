@@ -24,15 +24,27 @@ export type SpaceControllerDeps = {
 };
 
 export type SpaceController = {
-  homeForEnv(env: WorkspaceEnv): Promise<string>;
   activate(target: { spaceId: string; tabId?: number }): Promise<boolean>;
   create(input: {
     name: string;
     root: string;
     env: WorkspaceEnv;
   }): Promise<SpaceMeta | null>;
+  createAtHome(input: {
+    name: string;
+    env: WorkspaceEnv;
+  }): Promise<SpaceMeta | null>;
   changeRoot(spaceId: string, path: string): Promise<boolean>;
 };
+
+export function nextSpaceName(spaces: SpaceMeta[]): string {
+  let highest = 0;
+  for (const space of spaces) {
+    const match = /^Space (\d+)$/.exec(space.name);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `Space ${highest + 1}`;
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -58,8 +70,6 @@ export function createSpaceController(
     workspaceScopeKey(deps.currentEnv()) === workspaceScopeKey(env);
 
   return {
-    homeForEnv: async (env) => (await deps.prepareEnv(env)).home,
-
     activate: (target) => {
       const id = ++requestId;
       return serialize(async () => {
@@ -95,6 +105,31 @@ export function createSpaceController(
           root = await deps.validateRoot(input.root, input.env);
           if (!isCurrentRequest(id)) return null;
           prepared = await deps.prepareEnv(input.env);
+        } catch (error) {
+          if (isCurrentRequest(id)) {
+            deps.reportError(`Unable to create Space: ${errorMessage(error)}`);
+          }
+          return null;
+        }
+
+        if (!isCurrentRequest(id)) return null;
+        const space = deps.createMeta({ ...input, root });
+        deps.createTerminal(space.id, root);
+        deps.applyEnv(prepared);
+        deps.commitActive({ spaceId: space.id });
+        return space;
+      });
+    },
+
+    createAtHome: (input) => {
+      const id = ++requestId;
+      return serialize(async () => {
+        let root: string;
+        let prepared: PreparedWorkspace;
+        try {
+          prepared = await deps.prepareEnv(input.env);
+          if (!isCurrentRequest(id)) return null;
+          root = await deps.validateRoot(prepared.home, input.env);
         } catch (error) {
           if (isCurrentRequest(id)) {
             deps.reportError(`Unable to create Space: ${errorMessage(error)}`);

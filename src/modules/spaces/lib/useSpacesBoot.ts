@@ -3,7 +3,11 @@ import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { Tab } from "@/modules/tabs";
 import { DEFAULT_SPACE_ID } from "@/modules/tabs/lib/useTabs";
 import { isLeaf, type PaneNode } from "@/modules/terminal/lib/panes";
-import { parseWorkspaceScopeKey, type WorkspaceEnv } from "@/modules/workspace";
+import {
+  parseWorkspaceScopeKey,
+  type WorkspaceEnv,
+  workspaceScopeKey,
+} from "@/modules/workspace";
 import { useEffect, useRef } from "react";
 import { activeSpaceEnv } from "./activeSpace";
 import { freshTerminalTab, hydrateTabs } from "./serialize";
@@ -26,7 +30,6 @@ import { useSpaces } from "./useSpaces";
 
 type Params = {
   ready: boolean;
-  launchCwd: string | null;
   home: string | null;
   allocId: () => number;
   replaceTabs: (tabs: Tab[], activeId: number) => void;
@@ -71,22 +74,80 @@ export function restoreBootTabs(
   return restored;
 }
 
-function uniqueCwds(tabs: Tab[]): string[] {
-  const set = new Set<string>();
-  const walk = (n: PaneNode) => {
-    if (isLeaf(n)) {
-      if (n.cwd) set.add(n.cwd);
+async function recoverUnavailableRootsToHome(
+  spaces: SpaceMeta[],
+  rootIssues: SpaceRootIssues,
+  homeForEnv: (env: WorkspaceEnv) => Promise<string | null>,
+): Promise<{ spaces: SpaceMeta[]; rootIssues: SpaceRootIssues }> {
+  const recovered = [...spaces];
+  const remaining = { ...rootIssues };
+
+  for (let index = 0; index < recovered.length; index += 1) {
+    const space = recovered[index];
+    if (!remaining[space.id]) continue;
+
+    const home = await homeForEnv(space.env);
+    if (!home) continue;
+    try {
+      const root = await validateSpaceRoot(home, space.env);
+      recovered[index] = { ...space, root, updatedAt: Date.now() };
+      delete remaining[space.id];
+    } catch (error) {
+      remaining[space.id] = {
+        candidate: home,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  return { spaces: recovered, rootIssues: remaining };
+}
+
+export function workspaceCwdsForTabs(
+  tabs: Tab[],
+  spaces: SpaceMeta[],
+): Array<{ cwd: string; env: WorkspaceEnv }> {
+  const bySpace = new Map(spaces.map((space) => [space.id, space.env]));
+  const pairs = new Map<string, { cwd: string; env: WorkspaceEnv }>();
+
+  const walk = (node: PaneNode, env: WorkspaceEnv) => {
+    if (isLeaf(node)) {
+      if (node.cwd) {
+        pairs.set(`${workspaceScopeKey(env)}\0${node.cwd}`, {
+          cwd: node.cwd,
+          env,
+        });
+      }
       return;
     }
-    for (const c of n.children) walk(c);
+    for (const child of node.children) walk(child, env);
   };
-  for (const t of tabs) if (t.kind === "terminal") walk(t.paneTree);
-  return [...set];
+
+  for (const tab of tabs) {
+    if (tab.kind !== "terminal") continue;
+    const env = bySpace.get(tab.spaceId);
+    if (env) walk(tab.paneTree, env);
+  }
+  return [...pairs.values()];
+}
+
+export async function authorizeWorkspaceCwds(
+  tabs: Tab[],
+  spaces: SpaceMeta[],
+  authorize: (
+    cwd: string,
+    env: WorkspaceEnv,
+  ) => Promise<unknown> = native.workspaceAuthorize,
+): Promise<void> {
+  await Promise.allSettled(
+    workspaceCwdsForTabs(tabs, spaces).map(({ cwd, env }) =>
+      authorize(cwd, env),
+    ),
+  );
 }
 
 export function useSpacesBoot({
   ready,
-  launchCwd,
   home,
   allocId,
   replaceTabs,
@@ -114,7 +175,7 @@ export function useSpacesBoot({
             usePreferencesStore.getState().defaultWorkspaceEnv,
           );
           const envHome = await adoptWorkspaceEnv(env);
-          const candidate = launchCwd ?? home ?? envHome;
+          const candidate = envHome ?? (env.kind === "local" ? home : null);
           let root: string | null = null;
           let rootIssues: SpaceRootIssues = {};
           if (candidate) {
@@ -150,10 +211,12 @@ export function useSpacesBoot({
             saveActiveId(DEFAULT_SPACE_ID),
             saveSchemaVersion(SPACE_SCHEMA_VERSION),
           ]);
+          const tab = freshTerminalTab(DEFAULT_SPACE_ID, root, allocId);
           setActiveSpaceForNewTabs(DEFAULT_SPACE_ID);
           useSpaces
             .getState()
             .hydrate([meta], DEFAULT_SPACE_ID, {}, rootIssues);
+          replaceTabs([tab], tab.id);
           return;
         }
 
@@ -177,6 +240,19 @@ export function useSpacesBoot({
           );
         }
 
+        if (Object.keys(rootIssues).length > 0) {
+          const recovery = await recoverUnavailableRootsToHome(
+            spaces,
+            rootIssues,
+            adoptWorkspaceEnv,
+          );
+          if (recovery.spaces.some((space, index) => space !== spaces[index])) {
+            await saveSpacesList(recovery.spaces);
+          }
+          spaces = recovery.spaces;
+          rootIssues = recovery.rootIssues;
+        }
+
         const active =
           activeId && spaces.some((s) => s.id === activeId)
             ? activeId
@@ -191,23 +267,39 @@ export function useSpacesBoot({
         setActiveSpaceForNewTabs(active);
 
         const env = activeSpaceEnv(spaces, active);
-        await adoptWorkspaceEnv(env);
-
-        await Promise.allSettled(
-          uniqueCwds(restored).map((cwd) => native.workspaceAuthorize(cwd)),
-        );
+        const adoptedHome = await adoptWorkspaceEnv(env);
+        let bootTabs = restored;
+        if (!adoptedHome) {
+          const activeSpace = spaces.find((space) => space.id === active);
+          rootIssues = {
+            ...rootIssues,
+            [active]: {
+              candidate: activeSpace?.root ?? null,
+              message: "Unable to activate Space environment",
+            },
+          };
+          bootTabs = [freshTerminalTab(active, null, allocId)];
+        } else {
+          await authorizeWorkspaceCwds(restored, spaces);
+        }
 
         const initialActiveIndex: Record<string, number> = {};
         for (const [id, st] of states)
           initialActiveIndex[id] = st.activeTabIndex;
         useSpaces
           .getState()
-          .hydrate(spaces, active, initialActiveIndex, rootIssues);
+          .hydrate(
+            spaces,
+            active,
+            initialActiveIndex,
+            rootIssues,
+            !adoptedHome,
+          );
 
-        const inActive = restored.filter((t) => t.spaceId === active);
+        const inActive = bootTabs.filter((t) => t.spaceId === active);
         const idx = states.get(active)?.activeTabIndex ?? 0;
-        const activeTab = inActive[idx] ?? inActive[0] ?? restored[0];
-        replaceTabs(restored, activeTab.id);
+        const activeTab = inActive[idx] ?? inActive[0] ?? bootTabs[0];
+        replaceTabs(bootTabs, activeTab.id);
       } catch (e) {
         console.error("[terax] spaces boot failed:", e);
       } finally {
@@ -216,7 +308,6 @@ export function useSpacesBoot({
     })();
   }, [
     ready,
-    launchCwd,
     home,
     allocId,
     replaceTabs,

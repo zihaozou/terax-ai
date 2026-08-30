@@ -10,6 +10,23 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-28-space-owned-cwd-design.md`
 
+## Approved UX Override (2026-08-30)
+
+This section supersedes every later plan step that creates or invokes a Space directory picker or explicit unavailable-root recovery action. The ownership architecture and terminal isolation remain unchanged.
+
+- First boot and generic `New Space` use the fixed environment's Home as root; the first cold terminal uses the same Home and generic spaces receive a collision-free `Space N` name.
+- Process launch cwd is not part of the boot API and is never a Space root or initial terminal candidate.
+- An unavailable persisted root automatically recovers to the canonical, authorized Home of the same environment. A failed WSL Home never substitutes Local Home.
+- The bottom bar shows the complete Space-root breadcrumb followed by `...`. Ancestors move the root upward; `...` lists direct children and moves it downward one level.
+- Long breadcrumbs stay on one line, translate wheel input into horizontal scrolling, and auto-scroll to the right after root changes.
+- Child-directory loading receives the Space environment explicitly, remounts across `{env, root}` changes, and uses latest-request-wins semantics.
+- Canonical paths come from Rust: UNC prefixes remain intact and frontend code never rewrites legal Unix or WSL backslashes.
+- Restored terminal cwd authorization keeps `{cwd, env}` pairs, including equal path strings in different environments.
+- Failed active-environment adoption mounts one rootless cold fallback, leaves persisted tabs unmounted, and blocks tab-state persistence for that session.
+- The `Choose Folder` button, directory picker, picker request gate, and explicit recovery panel are removed.
+
+The implementation is covered by focused controller, boot, path, wheel, auto-scroll, and stale-request tests before the final verification gates.
+
 ## Global Constraints
 
 - Use pnpm only.
@@ -37,10 +54,6 @@
 - `src/modules/spaces/lib/rootValidation.test.ts`: validation order, normalization, and failure tests.
 - `src/modules/spaces/lib/spaceController.ts`: root creation/change transactions and serialized latest-request Space activation.
 - `src/modules/spaces/lib/spaceController.test.ts`: creation, root change, activation ordering, and race tests.
-- `src/modules/spaces/components/SpaceDirectoryPicker.tsx`: Local/WSL-aware directory browser and typed path entry.
-- `src/modules/spaces/components/SpaceRootRecovery.tsx`: unavailable-root sidebar recovery surface.
-- `src/modules/spaces/lib/directoryPicker.ts`: pure picker path/reducer helpers.
-- `src/modules/spaces/lib/directoryPicker.test.ts`: cross-platform path navigation tests.
 - `src/modules/tabs/lib/terminalSpace.ts`: resolve a terminal leaf to its owning Space.
 - `src/modules/tabs/lib/terminalSpace.test.ts`: background terminal environment routing tests.
 
@@ -50,18 +63,22 @@
 - `src/modules/source-control/useRepositoryTargeting.ts`: fixed per-Space repository target state.
 - `src/modules/source-control/repositoryTarget.ts`: active-tab and fixed-target routing rules.
 - `src/modules/source-control/repositoryTarget.test.ts`: tests for the removed second path state.
+- `src/modules/spaces/components/SpaceDirectoryPicker.tsx`: superseded Space directory picker.
+- `src/modules/spaces/components/SpaceRootRecovery.tsx`: superseded explicit recovery panel.
+- `src/modules/spaces/lib/directoryPicker.ts`: picker request gate and navigation helpers.
+- `src/modules/spaces/lib/directoryPicker.test.ts`: tests for the removed picker flow.
 
 ### Main modified files
 
 - `src/modules/spaces/lib/store.ts`: schema version persistence.
 - `src/modules/spaces/lib/useSpaces.ts`: root issues, explicit root mutation, and no in-place env mutation.
-- `src/modules/spaces/lib/useSpacesBoot.ts`: migration, root validation, explicit-env authorization, and recovery hydration.
-- `src/modules/spaces/index.ts`: export controller, root, picker, and recovery interfaces.
+- `src/modules/spaces/lib/useSpacesBoot.ts`: migration, root validation, explicit-env authorization, and automatic same-environment Home recovery.
+- `src/modules/spaces/index.ts`: export controller and root interfaces.
 - `src/app/hooks/useWorkspaceSwitcher.ts`: prepare and synchronously apply a validated env instead of destructive in-place Space migration.
 - `src/modules/tabs/lib/useTabs.ts`: root-explicit terminal creation and unavailable-Space warm gate.
-- `src/modules/spaces/SpaceSwitcher.tsx`: controller-owned activation and folder-first generic creation.
+- `src/modules/spaces/SpaceSwitcher.tsx`: controller-owned activation and Home-rooted generic creation.
 - `src/app/App.tsx`: active Space wiring only, with no cwd inference.
-- `src/modules/statusbar/CwdBreadcrumb.tsx`: stable Space root breadcrumb.
+- `src/modules/statusbar/CwdBreadcrumb.tsx`: complete horizontally scrollable Space-root breadcrumb with trailing child-directory `...`.
 - `src/modules/statusbar/StatusBar.tsx`: Space root and env actions.
 - `src/modules/statusbar/WorkspaceEnvSelector.tsx`: create-in-environment semantics.
 - `src/modules/explorer/FileExplorer.tsx`: replace folder actions.

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { activeSpaceEnv, findActiveSpace } from "./activeSpace";
+import * as activeSpaceModule from "./activeSpace";
+import type { SpaceRootIssues } from "./spaceRoot";
+
+const { activeSpaceEnv, findActiveSpace } = activeSpaceModule;
 import type { SpaceMeta } from "./store";
 
 function space(over: Partial<SpaceMeta>): SpaceMeta {
@@ -28,6 +31,27 @@ describe("findActiveSpace", () => {
 
   it("returns null when there are no spaces", () => {
     expect(findActiveSpace([], "a")).toBeNull();
+  });
+});
+
+describe("usableActiveSpaceRoot", () => {
+  it("returns null whenever the active Space has a root issue", () => {
+    const usableActiveSpaceRoot = (
+      activeSpaceModule as typeof activeSpaceModule & {
+        usableActiveSpaceRoot(
+          activeSpace: SpaceMeta | null,
+          issues: SpaceRootIssues,
+        ): string | null;
+      }
+    ).usableActiveSpaceRoot;
+    const active = space({ id: "broken", root: "/rejected" });
+
+    expect(
+      usableActiveSpaceRoot(active, {
+        broken: { candidate: "/rejected", message: "not found" },
+      }),
+    ).toBeNull();
+    expect(usableActiveSpaceRoot(active, {})).toBe("/rejected");
   });
 });
 

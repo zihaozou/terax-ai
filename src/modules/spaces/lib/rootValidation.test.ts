@@ -45,17 +45,33 @@ describe("validateSpaceRoot", () => {
     expect(authorize).not.toHaveBeenCalled();
   });
 
-  it("normalizes canonical Windows separators", async () => {
+  it("preserves backslashes in canonical Unix and WSL directory names", async () => {
+    const canonical = "/repo/dir\\name";
+    const stat = vi.fn(async () => ({
+      size: 0,
+      mtime: 0,
+      kind: "dir" as const,
+    }));
+    const authorize = vi.fn(async () => {});
+
     const root = await validateSpaceRoot(
-      "C:/repo",
-      { kind: "local" },
+      canonical,
+      { kind: "wsl", distro: "Ubuntu" },
       {
-        canonicalize: async () => "C:\\repo",
-        stat: async () => ({ size: 0, mtime: 0, kind: "dir" }),
-        authorize: async () => {},
+        canonicalize: async () => canonical,
+        stat,
+        authorize,
       },
     );
 
-    expect(root).toBe("C:/repo");
+    expect(root).toBe(canonical);
+    expect(stat).toHaveBeenCalledWith(canonical, {
+      kind: "wsl",
+      distro: "Ubuntu",
+    });
+    expect(authorize).toHaveBeenCalledWith(canonical, {
+      kind: "wsl",
+      distro: "Ubuntu",
+    });
   });
 });

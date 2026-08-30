@@ -8,8 +8,10 @@ vi.mock("@/modules/spaces/lib/store", () => ({
   saveSpacesList: vi.fn(),
 }));
 
-import { useSpaces } from "@/modules/spaces/lib/useSpaces";
+import * as spacesModule from "@/modules/spaces/lib/useSpaces";
 import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
+
+const { useSpaces } = spacesModule;
 
 function makeSpace(id: string, root: string | null): SpaceMeta {
   return {
@@ -30,6 +32,7 @@ function seedSpaces(
     spaces,
     activeId: spaces[0]?.id ?? null,
     hydrated: true,
+    persistenceBlocked: false,
     initialActiveIndex: {},
     rootIssues,
   });
@@ -37,6 +40,45 @@ function seedSpaces(
 
 afterEach(() => {
   seedSpaces([]);
+});
+
+describe("Space persistence policy", () => {
+  it("blocks persistence for an unhydrated or synthetic fallback session", () => {
+    const canPersistSpaceState = (
+      spacesModule as typeof spacesModule & {
+        canPersistSpaceState(
+          hydrated: boolean,
+          persistenceBlocked: boolean,
+        ): boolean;
+      }
+    ).canPersistSpaceState;
+
+    expect(canPersistSpaceState(false, false)).toBe(false);
+    expect(canPersistSpaceState(true, true)).toBe(false);
+    expect(canPersistSpaceState(true, false)).toBe(true);
+  });
+});
+
+describe("useSpaces hydration", () => {
+  it("can block tab persistence for a synthetic boot fallback", () => {
+    const hydrate = useSpaces.getState().hydrate as (
+      spaces: SpaceMeta[],
+      activeId: string | null,
+      initialActiveIndex: Record<string, number>,
+      rootIssues: SpaceRootIssues,
+      persistenceBlocked: boolean,
+    ) => void;
+
+    hydrate([makeSpace("broken", "/broken")], "broken", {}, {}, true);
+
+    expect(
+      (
+        useSpaces.getState() as ReturnType<typeof useSpaces.getState> & {
+          persistenceBlocked?: boolean;
+        }
+      ).persistenceBlocked,
+    ).toBe(true);
+  });
 });
 
 describe("useSpaces root mutations", () => {

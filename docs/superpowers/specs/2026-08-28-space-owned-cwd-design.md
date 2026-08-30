@@ -1,7 +1,7 @@
 # Space-Owned Working Directory Design
 
 Date: 2026-08-28
-Status: Approved for implementation planning
+Status: Approved, amended 2026-08-30
 
 ## Summary
 
@@ -18,7 +18,7 @@ This design makes the working directory an intrinsic property of a Space. `Space
 - Keep existing terminals unchanged when the Space root changes.
 - Make Local and WSL environment identity fixed per Space.
 - Replace folder context actions with `Open in New Space` where appropriate.
-- Provide a deterministic migration and explicit recovery path for invalid legacy roots.
+- Provide deterministic migration and automatic Home recovery for invalid legacy roots.
 - Preserve the ability to open files outside the Space root.
 
 ## Non-goals
@@ -65,7 +65,7 @@ type SpaceMeta = {
 };
 ```
 
-`root: null` is permitted only for legacy migration or explicit recovery state. A usable Space must have a normalized, authorized root.
+`root: null` is permitted only while the Space environment Home itself cannot be resolved or authorized. A usable Space must have a normalized, authorized root. New Spaces and first boot start at the Home directory of their fixed environment.
 
 `SpaceState` continues to own persisted tabs and the active tab index. Space identity and root do not move into `SpaceState` because tab persistence is debounced and should not control workspace identity.
 
@@ -82,7 +82,7 @@ Terminal cwd remains on terminal tabs and pane leaves. It describes the real she
 7. Source Control context always resolves from the active Space root.
 8. Files outside the Space root may open in the current Space without changing the root.
 9. Space activation must apply the target environment before exposing the target root to workspace consumers.
-10. Invalid roots never silently fall back to home.
+10. An unavailable root is replaced by the normalized, authorized Home of the same Space environment; a host Home is never substituted for a failed WSL Home.
 
 ## Space State API
 
@@ -94,7 +94,7 @@ The store exposes pure synchronous mutations after validation has succeeded:
 - `setRoot(spaceId, root)`
 - existing rename, color, reorder, remove, and active-state operations
 
-The existing in-place `setEnv` behavior is removed. Choosing another environment creates a new Space after an explicit folder selection.
+The existing in-place `setEnv` behavior is removed. Choosing another environment creates a new `Space N` rooted at that environment's Home.
 
 OS-facing work lives in a thin controller or hook within `modules/spaces`:
 
@@ -153,14 +153,16 @@ On success, one store mutation updates and persists the normalized root. Existin
 
 The component:
 
-- always displays the current Space root
-- changes the Space root when an ancestor or listed subdirectory is selected
-- includes `Choose Folder...` for arbitrary directory selection
-- shows an explicit recovery state when the root is unavailable
+- always displays the complete current Space root as a breadcrumb
+- changes the Space root when an ancestor is selected
+- ends with a `...` control that lists direct subdirectories and changes the root one level deeper
+- keeps the full path on one line; wheel input over an overflowing breadcrumb scrolls horizontally
+- automatically scrolls to the right edge after a root change so the current directory and `...` remain visible
+- shows a non-interactive error only when environment Home itself is unavailable
 
-On Windows, the environment control displays the current Space env. Selecting another Local or WSL environment opens folder selection for that environment and creates a new Space. It never mutates the current Space environment.
+The old `Choose Folder` button and system directory-picker flow are removed. The trailing `...` is the only downward navigation control, and every directory-listing request carries the breadcrumb Space environment explicitly. The dropdown remounts when either environment or root changes. Async directory-list results use latest-request-wins semantics so a response from an old root or closed menu cannot replace the current list.
 
-Folder selection is workspace-aware and accepts an explicit `WorkspaceEnv`. It uses existing directory listing, canonicalization, and authorization IPC with the supplied environment rather than relying on whichever Space is currently active. This gives Local and WSL the same model.
+On Windows, the environment control displays the current Space env. Selecting another Local or WSL environment creates a new `Space N` rooted at that environment's Home. It never mutates the current Space environment.
 
 ## Explorer Actions
 
@@ -181,7 +183,7 @@ Keep:
 
 `Open in New Space` validates the selected folder, inherits the current Space env, names the new Space from the folder basename, creates one initial terminal rooted there, and activates the new Space. The action calls the same Space controller used by generic Space creation.
 
-Generic `New Space` in SpaceSwitcher and Command Palette first asks for an environment when needed and requires an explicit folder selection. It never reads active terminal cwd.
+Generic `New Space` in SpaceSwitcher and Command Palette immediately creates `Space N` at the Home directory of the selected or current environment. It never reads active terminal cwd. The user may then move the root through the bottom breadcrumb.
 
 Multiple Spaces may use the same root because Space identity is the persisted id, not the path.
 
@@ -211,31 +213,32 @@ Migration results and the new schema version are written once. Later boots never
 
 ## Unavailable Root Recovery
 
-An unavailable root does not silently become home.
+On boot, an unavailable persisted root is automatically replaced by the canonical, authorized Home directory of that Space environment and the repaired Space list is persisted. A newly created store also uses environment Home instead of launch cwd.
 
-While unavailable:
+If environment Home cannot be resolved or authorized, the Space remains unavailable:
 
-- Explorer shows the original path and a folder recovery action.
-- the bottom bar shows the same recovery action
-- Source Control does not issue repository requests
+- every active root consumer receives `null`, even when the rejected persisted root string is non-null
+- the bottom bar shows a concise Home error with no picker action
+- Explorer and Source Control issue no root requests
 - cold terminals for that Space do not spawn
 - new terminal creation is disabled
-- editor and file tabs remain usable, including files outside the root
+- if active environment adoption itself fails, persisted tabs remain on disk but are not mounted; one rootless cold fallback tab is shown and tab-state persistence stays disabled for that session so the fallback cannot overwrite the saved snapshot
+- when environment adoption succeeds but root validation fails, editor and file tabs remain usable, including files outside the root
 
-After the user selects a valid directory, the normal root-change transaction restores the Space. Existing running terminals remain unchanged.
+Running terminals remain unchanged during either automatic recovery or later root changes.
 
 ## Terminal Events and Environment Authorization
 
 OSC 7 continues to update terminal tab and pane cwd.
 
-Authorization for a terminal cwd must use the environment of the terminal's owning Space, resolved through `leafId -> tab -> spaceId -> SpaceMeta.env`. It must not use the currently active Space environment. This prevents a background WSL terminal and a foreground Local Space from crossing authorization contexts.
+Authorization for a terminal cwd must use the environment of the terminal's owning Space, resolved through `leafId -> tab -> spaceId -> SpaceMeta.env`. This applies both to live OSC activity and restored boot cwd authorization. It must not use the currently active Space environment. This prevents a background WSL terminal and a foreground Local Space from crossing authorization contexts.
 
 The native wrapper may accept an explicit env for this authorization path while preserving the current active-env default for existing callers.
 
 ## Error Handling
 
-- Folder selection cancellation makes no state change.
-- Canonicalization, directory validation, and authorization errors surface a concise toast or recovery message and preserve the previous root.
+- An empty or failed child-directory listing changes no state.
+- Canonicalization, directory validation, and authorization errors surface a concise message and preserve the previous root.
 - Space activation errors preserve the previously active Space and tab.
 - Obsolete async results are discarded using request identity.
 - Source Control treats unavailable Space root as no context rather than falling back.
@@ -259,7 +262,11 @@ The native wrapper may accept an explicit env for this authorization path while 
 - migration from active persisted terminal cwd
 - migration from first terminal cwd
 - migration fallback to env home
-- invalid candidate recovery state
+- invalid candidate recovery to same-environment Home
+- first boot seeds both Space root and initial cold terminal cwd from environment Home
+- failed WSL Home resolution never substitutes Local Home
+- restored cwd authorization preserves equal paths in different Space environments
+- failed active-environment adoption mounts no persisted editor or terminal tabs and blocks fallback persistence
 - create and setRoot validation boundaries
 - failed validation leaves store unchanged
 - terminal OSC updates tab or leaf cwd but not Space root
@@ -284,9 +291,13 @@ The native wrapper may accept an explicit env for this authorization path while 
 - bottom-bar root change updates Explorer, Source Control, and new terminal cwd only
 - existing terminal session state is unchanged by root change
 - all folder menu locations remove the two old actions and add `Open in New Space`
-- generic New Space requires explicit folder selection
-- Local and WSL creation handle cancel, failure, and rapid repeated input
-- unavailable root recovery restores the Space without fallback
+- generic New Space creates `Space N` at environment Home
+- Local and WSL Home creation handle failure and rapid repeated input
+- unavailable root recovery persists the same-environment Home fallback
+- trailing `...` lists direct children with stale-response protection
+- long breadcrumbs preserve every segment, translate wheel input horizontally, and auto-scroll to the current root
+- UNC ancestors retain `//server/share`; canonical Unix and WSL backslashes remain filename characters
+- editor and markdown tabs continue to feed their path to StatusBar LSP and diagnostics indicators
 - Git History behavior remains unchanged
 
 ### Verification Gates

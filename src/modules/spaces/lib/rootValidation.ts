@@ -18,7 +18,7 @@ export async function validateSpaceRoot(
   env: WorkspaceEnv,
   fs: SpaceRootFs = nativeRootFs,
 ): Promise<string> {
-  const canonical = (await fs.canonicalize(path, env)).replace(/\\/g, "/");
+  const canonical = await fs.canonicalize(path, env);
   const stat = await fs.stat(canonical, env);
   if (stat.kind !== "dir") throw new Error("Space root must be a directory.");
   await fs.authorize(canonical, env);
