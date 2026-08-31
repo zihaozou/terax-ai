@@ -1,9 +1,7 @@
 import { create } from "zustand";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import {
-  parseWorkspaceScopeKey,
-  type WorkspaceEnv,
-} from "@/modules/workspace";
+import { parseWorkspaceScopeKey, type WorkspaceEnv } from "@/modules/workspace";
+import type { SpaceRootIssues } from "@/modules/spaces/lib/spaceRoot";
 import {
   deleteSpaceData,
   newSpaceId,
@@ -12,10 +10,17 @@ import {
   type SpaceMeta,
 } from "./store";
 
+export function canPersistSpaceState(
+  hydrated: boolean,
+  persistenceBlocked: boolean,
+): boolean {
+  return hydrated && !persistenceBlocked;
+}
+
 type CreateInput = {
   id?: string;
   name: string;
-  root: string | null;
+  root: string;
   env?: WorkspaceEnv;
 };
 
@@ -23,17 +28,23 @@ type State = {
   spaces: SpaceMeta[];
   activeId: string | null;
   hydrated: boolean;
+  persistenceBlocked: boolean;
   // Per-space active tab index loaded from disk, so persistence preserves it
   // for spaces the user never visits this session.
   initialActiveIndex: Record<string, number>;
+  rootIssues: SpaceRootIssues;
   hydrate: (
     spaces: SpaceMeta[],
     activeId: string | null,
     initialActiveIndex?: Record<string, number>,
+    rootIssues?: SpaceRootIssues,
+    persistenceBlocked?: boolean,
   ) => void;
   create: (input: CreateInput) => SpaceMeta;
   rename: (id: string, name: string) => void;
-  setEnv: (id: string, env: WorkspaceEnv) => void;
+  setRoot: (id: string, root: string) => void;
+  setRootIssue: (id: string, issue: SpaceRootIssues[string]) => void;
+  clearRootIssue: (id: string) => void;
   setColor: (id: string, color: number | undefined) => void;
   reorder: (orderedIds: string[]) => void;
   remove: (id: string) => string | null;
@@ -44,10 +55,25 @@ export const useSpaces = create<State>((set, get) => ({
   spaces: [],
   activeId: null,
   hydrated: false,
+  persistenceBlocked: false,
   initialActiveIndex: {},
+  rootIssues: {},
 
-  hydrate: (spaces, activeId, initialActiveIndex = {}) => {
-    set({ spaces, activeId, initialActiveIndex, hydrated: true });
+  hydrate: (
+    spaces,
+    activeId,
+    initialActiveIndex = {},
+    rootIssues = {},
+    persistenceBlocked = false,
+  ) => {
+    set({
+      spaces,
+      activeId,
+      initialActiveIndex,
+      rootIssues,
+      hydrated: true,
+      persistenceBlocked,
+    });
   },
 
   create: (input) => {
@@ -78,12 +104,22 @@ export const useSpaces = create<State>((set, get) => ({
     void saveSpacesList(spaces);
   },
 
-  setEnv: (id, env) => {
+  setRoot: (id, root) => {
     const spaces = get().spaces.map((s) =>
-      s.id === id ? { ...s, env, updatedAt: Date.now() } : s,
+      s.id === id ? { ...s, root, updatedAt: Date.now() } : s,
     );
-    set({ spaces });
+    const { [id]: _, ...rootIssues } = get().rootIssues;
+    set({ spaces, rootIssues });
     void saveSpacesList(spaces);
+  },
+
+  setRootIssue: (id, issue) => {
+    set({ rootIssues: { ...get().rootIssues, [id]: issue } });
+  },
+
+  clearRootIssue: (id) => {
+    const { [id]: _, ...rootIssues } = get().rootIssues;
+    set({ rootIssues });
   },
 
   setColor: (id, color) => {
@@ -111,14 +147,12 @@ export const useSpaces = create<State>((set, get) => ({
 
   remove: (id) => {
     const prev = get();
-    const spaces = prev.spaces.filter((s) => s.id !== id);
-    let activeId = prev.activeId;
-    if (activeId === id) activeId = spaces[0]?.id ?? null;
-    set({ spaces, activeId });
+    const spaces = prev.spaces.filter((space) => space.id !== id);
+    const { [id]: _, ...rootIssues } = prev.rootIssues;
+    set({ spaces, rootIssues });
     void saveSpacesList(spaces);
     void deleteSpaceData(id);
-    if (activeId !== prev.activeId) void saveActiveId(activeId);
-    return activeId;
+    return prev.activeId === id ? (spaces[0]?.id ?? null) : prev.activeId;
   },
 
   setActive: (id) => {

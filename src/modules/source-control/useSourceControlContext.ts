@@ -1,25 +1,16 @@
-import { useCallback, useMemo } from "react";
 import { native } from "@/lib/native";
 import type { SidebarViewId } from "@/modules/sidebar";
-import type { Tab } from "@/modules/tabs";
+import type { SpaceRootIssue } from "@/modules/spaces/lib/spaceRoot";
+import { useCallback } from "react";
+import { sourceControlPathForSpace } from "./spaceRepository";
 import {
-  activeRepositoryContextPath,
-  gitGraphRepositoryPath,
-  sourceControlRepositoryPath,
-  type SourceControlRepositoryTarget,
-} from "./repositoryTarget";
-import { useSourceControl } from "./useSourceControl";
+  type SourceControlSummary,
+  useSourceControl,
+} from "./useSourceControl";
 
 type Params = {
-  activeTab: Tab | undefined;
-  tabs: Tab[];
-  activeTerminalLeafCwd: string | null;
-  explorerRoot: string | null;
-  launchCwd: string | null;
-  launchCwdResolved: boolean;
-  home: string | null;
-  sidebarView: SidebarViewId;
-  repositoryTarget: SourceControlRepositoryTarget;
+  spaceRoot: string | null;
+  rootIssue: SpaceRootIssue | undefined;
   cycleSidebarView: (view: SidebarViewId) => void;
   openCommitHistoryTab: (args: {
     repoRoot: string;
@@ -27,95 +18,72 @@ type Params = {
   }) => void;
 };
 
-/**
- * Resolves the source-control context path off the active tab and feeds the
- * source-control summary. When git is not active the badge tracks a stable
- * per-session path so tab switches / cd don't re-fire git IPC.
- */
+export function maskSourceControlSummaryForContext(
+  summary: SourceControlSummary,
+  requestedContextPath: string | null,
+): SourceControlSummary {
+  if (summary.contextPath === requestedContextPath) return summary;
+  return {
+    ...summary,
+    contextPath: requestedContextPath,
+    repo: null,
+    status: null,
+    changedCount: 0,
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    hasRepo: false,
+    isLoading: requestedContextPath !== null,
+    localError: null,
+    busyAction: null,
+    lastRemoteError: null,
+    applyStatus: () => {},
+    runRemoteAction: async () => ({
+      ok: false,
+      action: null,
+      blocked: "no-repo",
+    }),
+  };
+}
+
 export function useSourceControlContext({
-  activeTab,
-  tabs,
-  activeTerminalLeafCwd,
-  explorerRoot,
-  launchCwd,
-  launchCwdResolved,
-  home,
-  sidebarView,
-  repositoryTarget,
+  spaceRoot,
+  rootIssue,
   cycleSidebarView,
   openCommitHistoryTab,
 }: Params) {
-  const workspaceFallbackPath = launchCwdResolved
-    ? (launchCwd ?? home ?? null)
-    : null;
-  const sourceControlContextPath = activeRepositoryContextPath({
-    activeTab,
-    activeTerminalLeafCwd,
-    explorerRoot,
-    workspaceFallbackPath,
-  });
-  const hasOpenGitTab = useMemo(
-    () =>
-      tabs.some(
-        (t) =>
-          t.kind === "git-diff" ||
-          t.kind === "git-history" ||
-          t.kind === "git-commit-file",
-      ),
-    [tabs],
+  const sourceControlPath = sourceControlPathForSpace(spaceRoot, rootIssue);
+  const loadedSourceControl = useSourceControl(sourceControlPath, true);
+  const sourceControl = maskSourceControlSummaryForContext(
+    loadedSourceControl,
+    sourceControlPath,
   );
-  // Ambient path tracks the explorer root so the rail badge and explorer git
-  // decorations reflect the repo you are actually looking at. cd-within-repo
-  // churn is absorbed by the status TTL + reusable-root path in useSourceControl.
-  const badgeContextPath = explorerRoot ?? workspaceFallbackPath;
-  const sourceControlPath = sourceControlRepositoryPath({
-    contextPath: sourceControlContextPath,
-    badgeContextPath,
-    sidebarView,
-    hasOpenGitTab,
-    target: repositoryTarget,
-  });
-  const graphContextPath = gitGraphRepositoryPath({
-    contextPath: sourceControlContextPath,
-    sidebarView,
-    target: repositoryTarget,
-  });
-  const sourceControl = useSourceControl(sourceControlPath, true);
 
   const toggleSourceControl = useCallback(() => {
     cycleSidebarView("source-control");
   }, [cycleSidebarView]);
 
   const openGitGraphFromContext = useCallback(async () => {
-    const known = sourceControl.hasRepo ? sourceControl.repo : null;
-    const fixedTargetIsLoaded =
-      sidebarView !== "source-control" ||
-      repositoryTarget.mode !== "fixed" ||
-      known?.repoRoot === repositoryTarget.repoRoot;
-    if (known && fixedTargetIsLoaded) {
+    const known =
+      sourceControl.hasRepo && sourceControl.contextPath === sourceControlPath
+        ? sourceControl.repo
+        : null;
+    if (known) {
       openCommitHistoryTab({
         repoRoot: known.repoRoot,
         branch: sourceControl.status?.branch ?? null,
       });
       return;
     }
-    if (!graphContextPath) return;
+    if (!sourceControlPath) return;
     try {
-      const repo = await native.gitResolveRepo(graphContextPath);
+      const repo = await native.gitResolveRepo(sourceControlPath);
       if (!repo) return;
       openCommitHistoryTab({ repoRoot: repo.repoRoot, branch: repo.branch });
     } catch {
       /* noop */
     }
-  }, [
-    openCommitHistoryTab,
-    sourceControl.hasRepo,
-    sourceControl.repo,
-    sourceControl.status?.branch,
-    graphContextPath,
-    repositoryTarget,
-    sidebarView,
-  ]);
+  }, [openCommitHistoryTab, sourceControl, sourceControlPath]);
 
   return { sourceControl, toggleSourceControl, openGitGraphFromContext };
 }

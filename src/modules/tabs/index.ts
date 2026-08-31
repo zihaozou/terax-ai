@@ -5,6 +5,7 @@ export {
   type TabSwitcherState,
 } from "./lib/useTabSwitcher";
 export { labelFor } from "./lib/tabLabel";
+export { spaceIdForLeaf } from "./lib/terminalSpace";
 export {
   MAX_PANES_PER_TAB,
   DEFAULT_SPACE_ID,
@@ -23,5 +24,4 @@ export {
   type GitCommitFileDiffTab,
   type TabPatch,
 } from "./lib/useTabs";
-export { useWorkspaceCwd } from "./lib/useWorkspaceCwd";
 export { useWindowTitle } from "./lib/useWindowTitle";

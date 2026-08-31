@@ -58,8 +58,7 @@ type Props = {
   onOpenFile: (path: string, pin?: boolean) => void;
   onPathRenamed?: (from: string, to: string) => void;
   onPathDeleted?: (path: string) => void;
-  onRevealInTerminal?: (path: string) => void;
-  onOpenInSourceControl?: (path: string) => void;
+  onOpenInNewSpace?: (path: string) => void;
   onOpenGitHistory?: (path: string) => void;
   pathDropTarget?: TerminalPathDropTarget;
   gitStatus?: GitStatusSnapshot | null;
@@ -197,8 +196,7 @@ export const FileExplorer = memo(
       onOpenFile,
       onPathRenamed,
       onPathDeleted,
-      onRevealInTerminal,
-      onOpenInSourceControl,
+      onOpenInNewSpace,
       onOpenGitHistory,
       pathDropTarget,
       gitStatus,
@@ -576,8 +574,7 @@ export const FileExplorer = memo(
           open={isSearchOpen}
           onRequestClose={() => setIsSearchOpen(false)}
           onActiveChange={setIsSearchActive}
-          onRevealInTerminal={onRevealInTerminal}
-          onOpenInSourceControl={onOpenInSourceControl}
+          onOpenInNewSpace={onOpenInNewSpace}
           onOpenGitHistory={onOpenGitHistory}
         />
 
@@ -699,22 +696,14 @@ export const FileExplorer = memo(
                       Open
                     </ContextMenuItem>
                   )}
-                  {menuTarget.isDir && onRevealInTerminal && (
+                  {menuTarget.isDir && onOpenInNewSpace ? (
                     <ContextMenuItem
                       className={COMPACT_ITEM}
-                      onSelect={() => onRevealInTerminal(menuTarget.path)}
+                      onSelect={() => onOpenInNewSpace(menuTarget.path)}
                     >
-                      Open in Terminal
+                      Open in New Space
                     </ContextMenuItem>
-                  )}
-                  {menuTarget.isDir && onOpenInSourceControl && (
-                    <ContextMenuItem
-                      className={COMPACT_ITEM}
-                      onSelect={() => onOpenInSourceControl(menuTarget.path)}
-                    >
-                      Open in Source Control
-                    </ContextMenuItem>
-                  )}
+                  ) : null}
                   {menuTarget.isDir && onOpenGitHistory && (
                     <ContextMenuItem
                       className={COMPACT_ITEM}
@@ -793,22 +782,14 @@ export const FileExplorer = memo(
                 </>
               ) : (
                 <>
-                  {onRevealInTerminal && (
+                  {onOpenInNewSpace ? (
                     <ContextMenuItem
                       className={COMPACT_ITEM}
-                      onSelect={() => onRevealInTerminal(rootPath)}
+                      onSelect={() => onOpenInNewSpace(rootPath)}
                     >
-                      Open in Terminal
+                      Open in New Space
                     </ContextMenuItem>
-                  )}
-                  {onOpenInSourceControl && (
-                    <ContextMenuItem
-                      className={COMPACT_ITEM}
-                      onSelect={() => onOpenInSourceControl(rootPath)}
-                    >
-                      Open in Source Control
-                    </ContextMenuItem>
-                  )}
+                  ) : null}
                   {onOpenGitHistory && (
                     <ContextMenuItem
                       className={COMPACT_ITEM}
