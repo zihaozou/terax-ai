@@ -7,6 +7,51 @@ pub type ConnectionId = u64;
 pub type ChannelId = u32;
 pub type ChallengeId = u64;
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PtySize {
+    pub columns: u32,
+    pub rows: u32,
+}
+
+impl PtySize {
+    pub const fn new(columns: u32, rows: u32) -> Self {
+        Self { columns, rows }
+    }
+
+    pub const fn is_valid(self) -> bool {
+        self.columns > 0 && self.rows > 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ChannelPhase {
+    Opening,
+    Live,
+    Exited,
+    Lost,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "type", content = "payload", rename_all = "camelCase")]
+pub enum PtyEvent {
+    Output(Vec<u8>),
+    ExitStatus(u32),
+    Error(super::errors::SshError),
+    Closed,
+    Lost,
+}
+
+#[derive(Debug)]
+pub struct SshConnectRequest {
+    pub space_id: String,
+    pub config: ResolvedSshConfig,
+    pub password: Option<AuthAnswer>,
+    pub trust_unknown_host: bool,
+    pub proxy_command_approved: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PresentedHostKey {
     pub algorithm: String,

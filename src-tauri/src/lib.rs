@@ -1,7 +1,8 @@
 pub mod modules;
 
 use modules::{
-    agent, control, fs, git, history, lsp, net, pty, secrets, shell, sidecar, vibrancy, workspace,
+    agent, control, fs, git, history, lsp, net, pty, secrets, shell, sidecar, ssh, vibrancy,
+    workspace,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -227,6 +228,7 @@ pub fn run() {
             Ok(())
         })
         .manage(pty::PtyState::default())
+        .manage(ssh::SshState::default())
         .manage(control_state)
         .manage(shell::ShellState::default())
         .manage(secrets::SecretsState::default())
@@ -342,6 +344,9 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     if let Some(state) = app.try_state::<lsp::LspState>() {
                         state.kill_all();
+                    }
+                    if let Some(state) = app.try_state::<ssh::SshState>() {
+                        state.close_all();
                     }
                     if let Some(state) = app.try_state::<control::ControlState>() {
                         state.shutdown();

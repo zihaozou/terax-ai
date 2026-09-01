@@ -1,8 +1,13 @@
 pub mod auth;
+pub mod channel;
 pub mod config;
 pub mod errors;
 pub mod known_hosts;
 pub mod limits;
+pub mod manager;
+#[cfg(test)]
+pub mod test_server;
+pub mod transport;
 pub mod types;
 
 pub use auth::{
@@ -16,9 +21,11 @@ pub use errors::{retry_delays, SshError, SshErrorCode};
 pub use known_hosts::{
     check_host_key, host_fingerprint, known_host_name, save_host_key, KnownHostEntry, KnownHosts,
 };
+pub use manager::{SpaceConnection, SshEventSink, SshState};
 pub use types::{
     AddKeysToAgent, AuthAnswer, AuthChallenge, AuthChallengeKind, AuthMethod, AuthResponse,
-    ChallengeId, ChannelId, ConnectionId, ConnectionPhase, HostKeyDecision, PresentedHostKey,
-    ResolvedSshConfig, SshChallenge, SshConfigWarning, SshConnectionEvent, SshProfileInput,
-    SshProfileOverrides, SshProfileSource, SshPrompt,
+    ChallengeId, ChannelId, ChannelPhase, ConnectionId, ConnectionPhase, HostKeyDecision,
+    PresentedHostKey, PtyEvent, PtySize, ResolvedSshConfig, SshChallenge, SshConfigWarning,
+    SshConnectRequest, SshConnectionEvent, SshProfileInput, SshProfileOverrides, SshProfileSource,
+    SshPrompt,
 };

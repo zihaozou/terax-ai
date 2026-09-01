@@ -3,7 +3,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use futures_util::future::LocalBoxFuture;
+use futures_util::future::BoxFuture;
 use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::agent::{client::AgentClient, AgentIdentity};
 use russh::keys::{decode_secret_key, Error as KeyError, PrivateKeyWithHashAlg};
@@ -342,7 +342,7 @@ pub trait AuthenticationBackend {
     fn authenticate_agent<'a>(
         &'a mut self,
         user: &'a str,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>>;
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>>;
 
     fn private_key_requires_passphrase(&self, identity_file: &Path) -> Result<bool, SshError>;
 
@@ -351,25 +351,25 @@ pub trait AuthenticationBackend {
         user: &'a str,
         identity_file: &'a Path,
         passphrase: Option<&'a AuthAnswer>,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>>;
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>>;
 
     fn authenticate_password<'a>(
         &'a mut self,
         user: &'a str,
         response: &'a AuthResponse,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>>;
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>>;
 
     fn start_keyboard_interactive<'a>(
         &'a mut self,
         user: &'a str,
         broker: &'a mut AuthBroker,
-    ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>>;
+    ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>>;
 
     fn continue_keyboard_interactive<'a>(
         &'a mut self,
         broker: &'a mut AuthBroker,
         response: AuthResponse,
-    ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>>;
+    ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>>;
 }
 
 pub struct AuthenticationDriver {
@@ -577,7 +577,7 @@ pub trait AgentConnector {
         &'a mut self,
         endpoint: AgentEndpoint,
         user: &'a str,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>>;
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>>;
 }
 
 struct RusshAgentConnector<'a, H: russh::client::Handler> {
@@ -589,7 +589,7 @@ impl<H: russh::client::Handler> AgentConnector for RusshAgentConnector<'_, H> {
         &'a mut self,
         endpoint: AgentEndpoint,
         user: &'a str,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
         Box::pin(async move {
             #[cfg(unix)]
             let mut agent = match endpoint {
@@ -639,13 +639,13 @@ impl<'a, H: russh::client::Handler, D> RusshAuthenticationBackend<'a, H, D> {
     }
 }
 
-impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
+impl<H: russh::client::Handler, D: AgentEndpointDiscovery + Sync> AuthenticationBackend
     for RusshAuthenticationBackend<'_, H, D>
 {
     fn authenticate_agent<'a>(
         &'a mut self,
         user: &'a str,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
         Box::pin(authenticate_agent(self.handle, user, &self.agent_discovery))
     }
 
@@ -658,7 +658,7 @@ impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
         user: &'a str,
         identity_file: &'a Path,
         passphrase: Option<&'a AuthAnswer>,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
         Box::pin(authenticate_private_key(
             self.handle,
             user,
@@ -671,7 +671,7 @@ impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
         &'a mut self,
         user: &'a str,
         response: &'a AuthResponse,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
         Box::pin(authenticate_password(self.handle, user, response))
     }
 
@@ -679,7 +679,7 @@ impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
         &'a mut self,
         user: &'a str,
         broker: &'a mut AuthBroker,
-    ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
+    ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
         Box::pin(start_keyboard_interactive(self.handle, user, broker))
     }
 
@@ -687,7 +687,7 @@ impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
         &'a mut self,
         broker: &'a mut AuthBroker,
         response: AuthResponse,
-    ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
+    ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
         Box::pin(continue_keyboard_interactive(self.handle, broker, response))
     }
 }
@@ -695,13 +695,13 @@ impl<H: russh::client::Handler, D: AgentEndpointDiscovery> AuthenticationBackend
 pub trait AgentClientBehavior {
     type Identity;
 
-    fn request_identities(&mut self) -> LocalBoxFuture<'_, Result<Vec<Self::Identity>, SshError>>;
+    fn request_identities(&mut self) -> BoxFuture<'_, Result<Vec<Self::Identity>, SshError>>;
 
     fn authenticate_identity<'a>(
         &'a mut self,
         user: &'a str,
         identity: Self::Identity,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>>;
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>>;
 }
 
 async fn authenticate_agent_client<C: AgentClientBehavior>(
@@ -728,7 +728,7 @@ where
 {
     type Identity = AgentIdentity;
 
-    fn request_identities(&mut self) -> LocalBoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
+    fn request_identities(&mut self) -> BoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
         Box::pin(async {
             self.agent
                 .request_identities()
@@ -741,7 +741,7 @@ where
         &'a mut self,
         user: &'a str,
         identity: Self::Identity,
-    ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+    ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
         Box::pin(async move {
             let hash_alg = self
                 .handle
@@ -1086,7 +1086,7 @@ mod tests {
                 &'a mut self,
                 endpoint: AgentEndpoint,
                 user: &'a str,
-            ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+            ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
                 self.calls.push((endpoint, user.to_owned()));
                 Box::pin(async { Ok(AuthOutcome::Rejected) })
             }
@@ -1114,7 +1114,7 @@ mod tests {
 
             fn request_identities(
                 &mut self,
-            ) -> LocalBoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
+            ) -> BoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
                 Box::pin(async { Ok(vec![1, 2, 3]) })
             }
 
@@ -1122,7 +1122,7 @@ mod tests {
                 &'a mut self,
                 _user: &'a str,
                 identity: Self::Identity,
-            ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+            ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
                 self.attempts.push(identity);
                 Box::pin(async move {
                     Ok(if identity == 2 {
@@ -1155,7 +1155,7 @@ mod tests {
 
             fn request_identities(
                 &mut self,
-            ) -> LocalBoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
+            ) -> BoxFuture<'_, Result<Vec<Self::Identity>, SshError>> {
                 Box::pin(async { Err(agent_unavailable()) })
             }
 
@@ -1163,7 +1163,7 @@ mod tests {
                 &'a mut self,
                 _user: &'a str,
                 _identity: Self::Identity,
-            ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+            ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
                 unreachable!()
             }
         }
@@ -1186,7 +1186,7 @@ mod tests {
         fn authenticate_agent<'a>(
             &'a mut self,
             _user: &'a str,
-        ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+        ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
             self.calls.push("agent".to_owned());
             Box::pin(async { Err(agent_unavailable()) })
         }
@@ -1200,7 +1200,7 @@ mod tests {
             _user: &'a str,
             identity_file: &'a Path,
             passphrase: Option<&'a AuthAnswer>,
-        ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+        ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
             self.calls.push(format!(
                 "key:{}:{}",
                 identity_file.display(),
@@ -1223,7 +1223,7 @@ mod tests {
             &'a mut self,
             _user: &'a str,
             _response: &'a AuthResponse,
-        ) -> LocalBoxFuture<'a, Result<AuthOutcome, SshError>> {
+        ) -> BoxFuture<'a, Result<AuthOutcome, SshError>> {
             self.calls.push("password".to_owned());
             Box::pin(async { Ok(AuthOutcome::Success) })
         }
@@ -1232,7 +1232,7 @@ mod tests {
             &'a mut self,
             _user: &'a str,
             _broker: &'a mut AuthBroker,
-        ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
+        ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
             self.calls.push("keyboard-interactive".to_owned());
             Box::pin(async { Ok(KeyboardInteractiveStep::Rejected) })
         }
@@ -1241,7 +1241,7 @@ mod tests {
             &'a mut self,
             _broker: &'a mut AuthBroker,
             _response: AuthResponse,
-        ) -> LocalBoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
+        ) -> BoxFuture<'a, Result<KeyboardInteractiveStep, SshError>> {
             unreachable!()
         }
     }
