@@ -91,4 +91,26 @@ mod tests {
         assert!(retry_delays(SshErrorCode::KnownHostsReadFailed).is_empty());
         assert_eq!(retry_delays(SshErrorCode::NetworkTimeout), [1, 2, 5]);
     }
+
+    #[test]
+    fn authentication_error_codes_have_stable_wire_names() {
+        let cases = [
+            (SshErrorCode::AgentUnavailable, "\"agentUnavailable\""),
+            (SshErrorCode::KeyReadFailed, "\"keyReadFailed\""),
+            (SshErrorCode::KeyDecryptFailed, "\"keyDecryptFailed\""),
+            (
+                SshErrorCode::AuthenticationRejected,
+                "\"authenticationRejected\"",
+            ),
+            (SshErrorCode::ChallengeCancelled, "\"challengeCancelled\""),
+            (
+                SshErrorCode::ProtocolLimitExceeded,
+                "\"protocolLimitExceeded\"",
+            ),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(serde_json::to_string(&code).unwrap(), expected);
+        }
+    }
 }

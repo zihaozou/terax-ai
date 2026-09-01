@@ -44,14 +44,14 @@ pub(crate) fn key(service: &str, account: &str) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn store_path<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join("secrets.json"))
 }
 
 #[cfg(target_os = "linux")]
-fn read_store(app: &AppHandle) -> Result<HashMap<String, String>, String> {
+fn read_store<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<HashMap<String, String>, String> {
     read_store_at(&store_path(app)?)
 }
 
@@ -65,7 +65,10 @@ pub(crate) fn read_store_at(path: &std::path::Path) -> Result<HashMap<String, St
 }
 
 #[cfg(target_os = "linux")]
-fn write_store(app: &AppHandle, map: &HashMap<String, String>) -> Result<(), String> {
+fn write_store<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    map: &HashMap<String, String>,
+) -> Result<(), String> {
     write_store_at(&store_path(app)?, map)
 }
 
@@ -95,9 +98,10 @@ pub(crate) fn write_store_at(
 }
 
 #[cfg(target_os = "linux")]
-fn with_store<F, R>(app: &AppHandle, state: &SecretsState, f: F) -> Result<R, String>
+fn with_store<F, T, R>(app: &AppHandle<R>, state: &SecretsState, f: F) -> Result<T, String>
 where
-    F: FnOnce(&mut HashMap<String, String>) -> R,
+    F: FnOnce(&mut HashMap<String, String>) -> T,
+    R: tauri::Runtime,
 {
     let mut guard = state.cache.lock().map_err(|e| e.to_string())?;
     if guard.is_none() {
@@ -112,8 +116,8 @@ fn entry(service: &str, account: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(service, account).map_err(|e| e.to_string())
 }
 
-pub(crate) async fn get_value(
-    app: &AppHandle,
+pub(crate) async fn get_value<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     state: &SecretsState,
     service: &str,
     account: &str,
@@ -135,8 +139,8 @@ pub(crate) async fn get_value(
     }
 }
 
-pub(crate) async fn set_value(
-    app: &AppHandle,
+pub(crate) async fn set_value<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     state: &SecretsState,
     service: &str,
     account: &str,
@@ -163,8 +167,8 @@ pub(crate) async fn set_value(
     }
 }
 
-pub(crate) async fn delete_value(
-    app: &AppHandle,
+pub(crate) async fn delete_value<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     state: &SecretsState,
     service: &str,
     account: &str,
@@ -302,6 +306,59 @@ mod tests {
         let p = tmp.path().join("secrets.json");
         fs::write(&p, b"not json").unwrap();
         assert!(read_store_at(&p).is_err());
+    }
+
+    #[tokio::test]
+    async fn command_helpers_preserve_get_set_delete_semantics() {
+        let app = tauri::test::mock_app();
+        let state = SecretsState::default();
+        let service = format!("test-service-{}", std::process::id());
+        let account = "command-helper-account";
+
+        delete_value(app.handle(), &state, &service, account)
+            .await
+            .unwrap();
+        assert_eq!(
+            get_value(app.handle(), &state, &service, account)
+                .await
+                .unwrap(),
+            None
+        );
+
+        set_value(app.handle(), &state, &service, account, "first")
+            .await
+            .unwrap();
+        assert_eq!(
+            get_value(app.handle(), &state, &service, account)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("first")
+        );
+
+        set_value(app.handle(), &state, &service, account, "replacement")
+            .await
+            .unwrap();
+        assert_eq!(
+            get_value(app.handle(), &state, &service, account)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("replacement")
+        );
+
+        delete_value(app.handle(), &state, &service, account)
+            .await
+            .unwrap();
+        delete_value(app.handle(), &state, &service, account)
+            .await
+            .unwrap();
+        assert_eq!(
+            get_value(app.handle(), &state, &service, account)
+                .await
+                .unwrap(),
+            None
+        );
     }
 }
 

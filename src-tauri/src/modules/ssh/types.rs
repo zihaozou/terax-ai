@@ -177,9 +177,19 @@ pub struct AuthChallenge {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthResponse {
-    pub challenge_id: ChallengeId,
-    pub answers: Vec<AuthAnswer>,
-    pub remember: bool,
+    pub(crate) challenge_id: ChallengeId,
+    pub(crate) answers: Vec<AuthAnswer>,
+    pub(crate) remember: bool,
+}
+
+impl AuthResponse {
+    pub fn challenge_id(&self) -> ChallengeId {
+        self.challenge_id
+    }
+
+    pub fn remember(&self) -> bool {
+        self.remember
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
