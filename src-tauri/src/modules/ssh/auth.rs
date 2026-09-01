@@ -330,6 +330,7 @@ pub enum AuthenticationStep {
 
 #[derive(Debug)]
 enum DriverState {
+    NotStarted,
     Advancing,
     Password,
     PrivateKey(String),
@@ -386,7 +387,7 @@ impl AuthenticationDriver {
             broker: AuthBroker::new(connection_id),
             method_index: 0,
             identity_index: 0,
-            state: DriverState::Advancing,
+            state: DriverState::NotStarted,
         }
     }
 
@@ -398,13 +399,18 @@ impl AuthenticationDriver {
         &mut self,
         backend: &mut B,
     ) -> Result<AuthenticationStep, SshError> {
-        if !matches!(self.state, DriverState::Advancing) {
+        if !matches!(self.state, DriverState::NotStarted) {
             return Err(self.broker.error(
                 SshErrorCode::ChallengeCancelled,
                 "authentication driver has already started",
             ));
         }
-        self.advance(backend).await
+        self.state = DriverState::Advancing;
+        let result = self.advance(backend).await;
+        if result.is_err() {
+            self.terminate();
+        }
+        result
     }
 
     pub async fn respond<B: AuthenticationBackend>(
@@ -414,10 +420,18 @@ impl AuthenticationDriver {
         answers: Vec<AuthAnswer>,
         remember: bool,
     ) -> Result<AuthenticationStep, SshError> {
-        let state = std::mem::replace(&mut self.state, DriverState::Advancing);
-        let response = self
+        let state = std::mem::replace(&mut self.state, DriverState::Complete);
+        let response = match self
             .broker
-            .respond_with_remember(challenge_id, answers, remember)?;
+            .respond_with_remember(challenge_id, answers, remember)
+        {
+            Ok(response) => response,
+            Err(error) => {
+                self.terminate();
+                return Err(error);
+            }
+        };
+        self.state = DriverState::Advancing;
         let result = match state {
             DriverState::Password => backend
                 .authenticate_password(&self.config.user, &response)
@@ -435,12 +449,21 @@ impl AuthenticationDriver {
                 .continue_keyboard_interactive(&mut self.broker, response)
                 .await
                 .map(AuthenticationResult::KeyboardInteractive),
-            DriverState::Advancing | DriverState::Complete => Err(self.broker.error(
-                SshErrorCode::ChallengeCancelled,
-                "authentication challenge is no longer active",
-            )),
-        }?;
-        self.finish_result(backend, result).await
+            DriverState::NotStarted | DriverState::Advancing | DriverState::Complete => {
+                Err(self.broker.error(
+                    SshErrorCode::ChallengeCancelled,
+                    "authentication challenge is no longer active",
+                ))
+            }
+        };
+        let result = match result {
+            Ok(result) => self.finish_result(backend, result).await,
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            self.terminate();
+        }
+        result
     }
 
     async fn advance<B: AuthenticationBackend>(
@@ -536,6 +559,11 @@ impl AuthenticationDriver {
         } else {
             AuthenticationStep::Rejected
         }
+    }
+
+    fn terminate(&mut self) {
+        self.state = DriverState::Complete;
+        self.broker.pending = None;
     }
 }
 
@@ -1151,6 +1179,7 @@ mod tests {
 
     struct FakeBackend {
         calls: Vec<String>,
+        fail_encrypted_key: bool,
     }
 
     impl AuthenticationBackend for FakeBackend {
@@ -1177,7 +1206,17 @@ mod tests {
                 identity_file.display(),
                 passphrase.is_some()
             ));
-            Box::pin(async { Ok(AuthOutcome::Rejected) })
+            let result = if self.fail_encrypted_key && passphrase.is_some() {
+                Err(SshError::new(
+                    SshErrorCode::AuthenticationRejected,
+                    "authentication",
+                    "fake-backend",
+                    "authentication backend failed",
+                ))
+            } else {
+                Ok(AuthOutcome::Rejected)
+            };
+            Box::pin(async move { result })
         }
 
         fn authenticate_password<'a>(
@@ -1227,7 +1266,10 @@ mod tests {
     #[tokio::test]
     async fn driver_orders_methods_iterates_keys_and_correlates_responses() {
         let mut driver = AuthenticationDriver::new(41, driver_config());
-        let mut backend = FakeBackend { calls: Vec::new() };
+        let mut backend = FakeBackend {
+            calls: Vec::new(),
+            fail_encrypted_key: false,
+        };
 
         let AuthenticationStep::Challenge(key_challenge) =
             driver.start(&mut backend).await.unwrap()
@@ -1249,12 +1291,57 @@ mod tests {
             SshErrorCode::ChallengeCancelled
         );
         assert_eq!(backend.calls, ["agent", "key:first:false"]);
+        assert_eq!(
+            driver.start(&mut backend).await.unwrap_err().code,
+            SshErrorCode::ChallengeCancelled
+        );
+        assert_eq!(backend.calls, ["agent", "key:first:false"]);
+    }
+
+    #[tokio::test]
+    async fn driver_backend_failure_is_terminal() {
+        let mut driver = AuthenticationDriver::new(42, driver_config());
+        let mut backend = FakeBackend {
+            calls: Vec::new(),
+            fail_encrypted_key: true,
+        };
+        let AuthenticationStep::Challenge(key_challenge) =
+            driver.start(&mut backend).await.unwrap()
+        else {
+            panic!("encrypted second key should request a passphrase");
+        };
+
+        assert_eq!(
+            driver
+                .respond(
+                    &mut backend,
+                    key_challenge.id,
+                    vec![secret("passphrase")],
+                    false,
+                )
+                .await
+                .unwrap_err()
+                .code,
+            SshErrorCode::AuthenticationRejected
+        );
+        assert!(driver.pending().is_none());
+        assert_eq!(
+            driver.start(&mut backend).await.unwrap_err().code,
+            SshErrorCode::ChallengeCancelled
+        );
+        assert_eq!(
+            backend.calls,
+            ["agent", "key:first:false", "key:second:true"]
+        );
     }
 
     #[tokio::test]
     async fn driver_continues_from_key_rejection_to_password_success() {
-        let mut driver = AuthenticationDriver::new(42, driver_config());
-        let mut backend = FakeBackend { calls: Vec::new() };
+        let mut driver = AuthenticationDriver::new(43, driver_config());
+        let mut backend = FakeBackend {
+            calls: Vec::new(),
+            fail_encrypted_key: false,
+        };
         let AuthenticationStep::Challenge(key_challenge) =
             driver.start(&mut backend).await.unwrap()
         else {
