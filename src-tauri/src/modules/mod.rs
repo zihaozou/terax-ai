@@ -12,3 +12,5 @@ pub mod shell;
 pub mod sidecar;
 pub mod vibrancy;
 pub mod workspace;
+
+pub mod ssh;
