@@ -80,6 +80,7 @@ which = "8.0.4"
 
 [dev-dependencies]
 proptest = "1"
+tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
