@@ -6,12 +6,18 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
+    Engine as _,
+};
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 
-use super::types::{HostKeyDecision, PresentedHostKey};
+use super::{
+    errors::{SshError, SshErrorCode},
+    types::{HostKeyDecision, PresentedHostKey},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KnownHostEntry {
@@ -36,32 +42,41 @@ impl KnownHosts {
         Self::new(paths)
     }
 
-    pub fn check(&self, host: &str, port: u16, key: &PresentedHostKey) -> HostKeyDecision {
+    pub fn check(
+        &self,
+        host: &str,
+        port: u16,
+        key: &PresentedHostKey,
+    ) -> Result<HostKeyDecision, SshError> {
+        let mut mismatch = None;
         for path in &self.paths {
-            let Ok(recorded_keys) =
-                russh::keys::known_hosts::known_host_keys_path(host, port, path)
-            else {
-                continue;
-            };
+            match fs::metadata(path) {
+                Ok(_) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(known_hosts_error(host, path, error)),
+            }
+            let recorded_keys = russh::keys::known_hosts::known_host_keys_path(host, port, path)
+                .map_err(|error| known_hosts_error(host, path, error))?;
+            fs::metadata(path).map_err(|error| known_hosts_error(host, path, error))?;
             for (line, recorded) in recorded_keys {
                 if recorded.algorithm().as_str() != key.algorithm {
                     continue;
                 }
-                let Ok(recorded_blob) = recorded.to_bytes() else {
-                    continue;
-                };
+                let recorded_blob = recorded
+                    .to_bytes()
+                    .map_err(|error| known_hosts_error(host, path, error))?;
                 if recorded_blob == key.blob {
-                    return HostKeyDecision::Match;
+                    return Ok(HostKeyDecision::Match);
                 }
-                return HostKeyDecision::Mismatch {
+                mismatch.get_or_insert_with(|| HostKeyDecision::Mismatch {
                     old_fingerprint: host_fingerprint(&recorded_blob),
                     new_fingerprint: host_fingerprint(&key.blob),
                     file: path.clone(),
                     line,
-                };
+                });
             }
         }
-        HostKeyDecision::Unknown
+        Ok(mismatch.unwrap_or(HostKeyDecision::Unknown))
     }
 }
 
@@ -70,8 +85,17 @@ pub fn check_host_key(
     port: u16,
     key: &PresentedHostKey,
     user_known_hosts_files: Vec<PathBuf>,
-) -> HostKeyDecision {
+) -> Result<HostKeyDecision, SshError> {
     KnownHosts::with_system_hosts(user_known_hosts_files).check(host, port, key)
+}
+
+fn known_hosts_error(host: &str, path: &Path, error: impl std::fmt::Display) -> SshError {
+    SshError::new(
+        SshErrorCode::KnownHostsReadFailed,
+        "verifying host key",
+        host,
+        format!("failed to read {}: {error}", path.display()),
+    )
 }
 
 pub fn host_fingerprint(blob: &[u8]) -> String {
@@ -129,7 +153,10 @@ fn write_lock(path: &Path) -> Arc<AsyncMutex<()>> {
 }
 
 fn save_host_key_locked(path: &Path, entry: &KnownHostEntry) -> io::Result<()> {
-    match KnownHosts::new(vec![path.to_owned()]).check(&entry.host, entry.port, &entry.key) {
+    match KnownHosts::new(vec![path.to_owned()])
+        .check(&entry.host, entry.port, &entry.key)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+    {
         HostKeyDecision::Match => return Ok(()),
         HostKeyDecision::Mismatch { .. } => {
             return Err(io::Error::new(
@@ -145,10 +172,11 @@ fn save_host_key_locked(path: &Path, entry: &KnownHostEntry) -> io::Result<()> {
             "known_hosts path has no parent",
         )
     })?;
-    let existing = fs::read(path).unwrap_or_default();
-    let permissions = fs::metadata(path)
-        .ok()
-        .map(|metadata| metadata.permissions());
+    let (existing, permissions) = match fs::read(path) {
+        Ok(contents) => (contents, Some(fs::metadata(path)?.permissions())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), None),
+        Err(error) => return Err(error),
+    };
     let mut contents = existing;
     if !contents.is_empty() && !contents.ends_with(b"\n") {
         contents.push(b'\n');
@@ -172,7 +200,7 @@ fn format_known_host_entry(entry: &KnownHostEntry) -> String {
         "{} {} {}\n",
         known_host_name(&entry.host, entry.port),
         entry.key.algorithm,
-        STANDARD_NO_PAD.encode(&entry.key.blob)
+        STANDARD.encode(&entry.key.blob)
     )
 }
 
@@ -219,6 +247,7 @@ mod tests {
 
     const KEY_ONE: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIJdD7y3aLq454yWBdwLWbieU1ebz9/cu7/QEXn9OIeZJ";
     const KEY_TWO: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIA6rWI3G1sz07DnfFlrouTcysQlj2P+jpNSOEWD9OJ3X";
+    const ECDSA_KEY: &str = "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBHwf2HMM5TRXvo2SQJjsNkiDD5KqiiNjrGVv3UUh+mMT5RHxiRtOnlqvjhQtBq0VpmpCV/PwUdhOig4vkbqAcEc=";
 
     #[test]
     fn known_unknown_and_changed_keys_are_distinct() {
@@ -227,17 +256,48 @@ mod tests {
         fs::write(&fixture, format!("prod.example ssh-ed25519 {KEY_ONE}\n")).unwrap();
         let store = KnownHosts::new(vec![fixture]);
         assert_eq!(
-            store.check("prod.example", 22, &key(KEY_ONE)),
+            store.check("prod.example", 22, &key(KEY_ONE)).unwrap(),
             HostKeyDecision::Match
         );
         assert_eq!(
-            store.check("new.example", 22, &key(KEY_TWO)),
+            store.check("new.example", 22, &key(KEY_TWO)).unwrap(),
             HostKeyDecision::Unknown
         );
         assert!(matches!(
-            store.check("prod.example", 22, &key(KEY_TWO)),
+            store.check("prod.example", 22, &key(KEY_TWO)).unwrap(),
             HostKeyDecision::Mismatch { .. }
         ));
+    }
+
+    #[test]
+    fn later_matching_key_wins_over_an_earlier_mismatch() {
+        let directory = TempDir::new().unwrap();
+        let fixture = directory.path().join("known_hosts");
+        fs::write(
+            &fixture,
+            format!("prod.example ssh-ed25519 {KEY_ONE}\nprod.example ssh-ed25519 {KEY_TWO}\n"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            KnownHosts::new(vec![fixture])
+                .check("prod.example", 22, &key(KEY_TWO))
+                .unwrap(),
+            HostKeyDecision::Match
+        );
+    }
+
+    #[test]
+    fn malformed_matching_entry_fails_closed() {
+        let directory = TempDir::new().unwrap();
+        let fixture = directory.path().join("known_hosts");
+        fs::write(&fixture, "prod.example ssh-ed25519 malformed-key\n").unwrap();
+
+        let error = KnownHosts::new(vec![fixture])
+            .check("prod.example", 22, &key(KEY_ONE))
+            .unwrap_err();
+
+        assert_eq!(error.code, SshErrorCode::KnownHostsReadFailed);
     }
 
     #[test]
@@ -269,6 +329,33 @@ mod tests {
         let text = fs::read_to_string(&fixture).unwrap();
         assert!(text.contains("one.example"));
         assert!(text.contains("two.example"));
+    }
+
+    #[test]
+    fn saved_padded_key_rechecks_as_a_match() {
+        let directory = TempDir::new().unwrap();
+        let fixture = directory.path().join("known_hosts");
+        let key = key_with_algorithm("ecdsa-sha2-nistp256", ECDSA_KEY);
+        assert_ne!(key.blob.len() % 3, 0);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime
+            .block_on(save_host_key(
+                &fixture,
+                entry("prod.example", 22, key.clone()),
+            ))
+            .unwrap();
+
+        assert!(fs::read_to_string(&fixture).unwrap().contains('='));
+        assert_eq!(
+            KnownHosts::new(vec![fixture])
+                .check("prod.example", 22, &key)
+                .unwrap(),
+            HostKeyDecision::Match
+        );
     }
 
     #[test]
@@ -304,8 +391,12 @@ mod tests {
     }
 
     fn key(encoded: &str) -> PresentedHostKey {
+        key_with_algorithm("ssh-ed25519", encoded)
+    }
+
+    fn key_with_algorithm(algorithm: &str, encoded: &str) -> PresentedHostKey {
         PresentedHostKey {
-            algorithm: "ssh-ed25519".to_owned(),
+            algorithm: algorithm.to_owned(),
             blob: STANDARD.decode(encoded).unwrap(),
         }
     }

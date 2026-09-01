@@ -13,6 +13,7 @@ pub enum SshErrorCode {
     ProxyCommandFailed,
     HostUnknown,
     HostKeyMismatch,
+    KnownHostsReadFailed,
     AgentUnavailable,
     KeyReadFailed,
     KeyDecryptFailed,
@@ -84,8 +85,10 @@ mod tests {
     fn auth_and_host_key_errors_do_not_retry() {
         assert!(!SshErrorCode::AuthenticationRejected.is_retryable());
         assert!(!SshErrorCode::HostKeyMismatch.is_retryable());
+        assert!(!SshErrorCode::KnownHostsReadFailed.is_retryable());
         assert!(retry_delays(SshErrorCode::AuthenticationRejected).is_empty());
         assert!(retry_delays(SshErrorCode::HostKeyMismatch).is_empty());
+        assert!(retry_delays(SshErrorCode::KnownHostsReadFailed).is_empty());
         assert_eq!(retry_delays(SshErrorCode::NetworkTimeout), [1, 2, 5]);
     }
 }
