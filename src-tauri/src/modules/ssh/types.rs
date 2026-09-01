@@ -1,8 +1,27 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub type ConnectionId = u64;
 pub type ChannelId = u32;
 pub type ChallengeId = u64;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PresentedHostKey {
+    pub algorithm: String,
+    pub blob: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostKeyDecision {
+    Match,
+    Unknown,
+    Mismatch {
+        old_fingerprint: String,
+        new_fingerprint: String,
+        file: PathBuf,
+        line: usize,
+    },
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
