@@ -8,7 +8,10 @@ use russh::server::{self, Auth, Msg, Response, Server as _, Session};
 use russh::{Channel, ChannelId};
 use tokio::net::TcpListener;
 
-use super::types::{AddKeysToAgent, AuthAnswer, AuthMethod, ResolvedSshConfig, SshConnectRequest};
+use super::known_hosts::{save_host_key, KnownHostEntry};
+use super::types::{
+    AddKeysToAgent, AuthAnswer, AuthMethod, PresentedHostKey, ResolvedSshConfig, SshConnectRequest,
+};
 
 const TEST_HOST_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\nQyNTUxOQAAACBgDNH4hM1CYxR49wyoO7fJVwTLJgLSy0lEVKdOCxdZxgAAAKiSByPskgcj\n7AAAAAtzc2gtZWQyNTUxOQAAACBgDNH4hM1CYxR49wyoO7fJVwTLJgLSy0lEVKdOCxdZxg\nAAAEB53dSlBZiXS/JrjhTKIeJM/9NvJT6rumImMLPiw18IPmAM0fiEzUJjFHj3DKg7t8lX\nBMsmAtLLSURUp04LF1nGAAAAIXppaGFvem91QFppaGFvcy1NYWNCb29rLVByby5sb2NhbA\nECAwQ=\n-----END OPENSSH PRIVATE KEY-----\n";
 
@@ -134,7 +137,7 @@ impl server::Handler for Handler {
     ) -> Result<(), Self::Error> {
         self.state.shell_open_count.fetch_add(1, Ordering::Relaxed);
         session.request_success();
-        if self.state.burst_output.load(Ordering::Relaxed) {
+        if self.state.burst_output.swap(false, Ordering::Relaxed) {
             for _ in 0..65 {
                 session.data(channel, vec![b'x'])?;
             }
@@ -189,6 +192,7 @@ pub struct TestSshServer {
     user: String,
     auth: TestAuth,
     identity_dir: Option<tempfile::TempDir>,
+    known_hosts_dir: tempfile::TempDir,
     state: Arc<TestServerState>,
     handle: server::RunningServerHandle,
 }
@@ -229,6 +233,21 @@ impl TestSshServer {
             state: state.clone(),
         };
         let key = PrivateKey::from_openssh(TEST_HOST_KEY).unwrap();
+        let known_hosts_dir = tempfile::tempdir().unwrap();
+        let known_hosts_file = known_hosts_dir.path().join("known_hosts");
+        save_host_key(
+            &known_hosts_file,
+            KnownHostEntry {
+                host: address.ip().to_string(),
+                port: address.port(),
+                key: PresentedHostKey {
+                    algorithm: key.public_key().algorithm().as_str().to_owned(),
+                    blob: key.public_key().to_bytes().unwrap(),
+                },
+            },
+        )
+        .await
+        .unwrap();
         let config = Arc::new(server::Config {
             auth_rejection_time: Duration::ZERO,
             auth_rejection_time_initial: Some(Duration::ZERO),
@@ -247,6 +266,7 @@ impl TestSshServer {
             user: user.to_owned(),
             auth,
             identity_dir,
+            known_hosts_dir,
             state,
             handle,
         }
@@ -265,7 +285,12 @@ impl TestSshServer {
                 proxy_command: None,
                 proxy_jump: None,
                 add_keys_to_agent: AddKeysToAgent::No,
-                known_hosts_files: Vec::new(),
+                known_hosts_files: vec![self
+                    .known_hosts_dir
+                    .path()
+                    .join("known_hosts")
+                    .to_string_lossy()
+                    .into_owned()],
                 warnings: Vec::new(),
                 proxy_consent_hash: None,
             },
@@ -273,9 +298,19 @@ impl TestSshServer {
                 TestAuth::Password(password) => Some(AuthAnswer::new(password.to_string())),
                 _ => None,
             },
-            trust_unknown_host: true,
             proxy_command_approved: false,
         }
+    }
+
+    pub fn unknown_connect_request(&self, space_id: &str) -> SshConnectRequest {
+        let mut request = self.connect_request(space_id);
+        request.config.known_hosts_files = vec![self
+            .known_hosts_dir
+            .path()
+            .join(format!("unknown-{space_id}"))
+            .to_string_lossy()
+            .into_owned()];
+        request
     }
 
     pub fn private_key_request(&self, space_id: &str) -> SshConnectRequest {

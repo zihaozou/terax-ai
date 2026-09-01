@@ -10,22 +10,21 @@ use tokio::sync::{mpsc, Mutex as AsyncMutex};
 
 use super::errors::{SshError, SshErrorCode};
 use super::known_hosts::KnownHosts;
-use super::types::{HostKeyDecision, PresentedHostKey, ResolvedSshConfig};
+use super::types::{HostKeyDecision, HostTrustDecision, PresentedHostKey, ResolvedSshConfig};
 
 #[derive(Clone)]
 pub(crate) struct ClientHandler {
     host: String,
     port: u16,
     known_hosts: KnownHosts,
-    trust_unknown: bool,
     verification_error: Arc<Mutex<Option<SshError>>>,
-    trust_bridge: Option<HostTrustBridge>,
+    trust_bridge: HostTrustBridge,
 }
 
 #[derive(Clone)]
 pub(crate) struct HostTrustBridge {
     pub presented: mpsc::Sender<PresentedHostKey>,
-    pub decisions: Arc<AsyncMutex<mpsc::Receiver<bool>>>,
+    pub decisions: Arc<AsyncMutex<mpsc::Receiver<HostTrustDecision>>>,
 }
 
 impl client::Handler for ClientHandler {
@@ -45,14 +44,14 @@ impl client::Handler for ClientHandler {
         };
         match self.known_hosts.check(&self.host, self.port, &presented) {
             Ok(HostKeyDecision::Match) => Ok(true),
-            Ok(HostKeyDecision::Unknown) if self.trust_unknown => Ok(true),
             Ok(HostKeyDecision::Unknown) => {
-                if let Some(bridge) = &self.trust_bridge {
-                    if bridge.presented.send(presented).await.is_ok()
-                        && bridge.decisions.lock().await.recv().await == Some(true)
-                    {
-                        return Ok(true);
-                    }
+                if self.trust_bridge.presented.send(presented).await.is_ok()
+                    && matches!(
+                        self.trust_bridge.decisions.lock().await.recv().await,
+                        Some(HostTrustDecision::TrustOnce | HostTrustDecision::TrustAndSave)
+                    )
+                {
+                    return Ok(true);
                 }
                 self.record_error(SshError::new(
                     SshErrorCode::HostUnknown,
@@ -96,9 +95,8 @@ pub struct AuthenticatedTransport {
 impl AuthenticatedTransport {
     pub(crate) async fn connect_unauthenticated(
         config: &ResolvedSshConfig,
-        trust_unknown: bool,
         proxy_command_approved: bool,
-        trust_bridge: Option<HostTrustBridge>,
+        trust_bridge: HostTrustBridge,
     ) -> Result<Self, SshError> {
         let verification_error = Arc::new(Mutex::new(None));
         let handler = ClientHandler {
@@ -107,7 +105,6 @@ impl AuthenticatedTransport {
             known_hosts: KnownHosts::with_system_hosts(
                 config.known_hosts_files.iter().map(PathBuf::from).collect(),
             ),
-            trust_unknown,
             verification_error: verification_error.clone(),
             trust_bridge,
         };
@@ -171,6 +168,10 @@ impl AuthenticatedTransport {
             .channel_open_direct_tcpip(host, port, originator_host, originator_port)
             .await
             .map_err(|error| transport_error("opening ProxyJump channel", error))
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.handle.is_closed()
     }
 
     pub async fn disconnect(&self) {

@@ -48,8 +48,15 @@ pub struct SshConnectRequest {
     pub space_id: String,
     pub config: ResolvedSshConfig,
     pub password: Option<AuthAnswer>,
-    pub trust_unknown_host: bool,
     pub proxy_command_approved: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HostTrustDecision {
+    Reject,
+    TrustOnce,
+    TrustAndSave,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -323,6 +330,22 @@ mod tests {
         let overrides = r#"{"strictHostKeyChecking":false}"#;
 
         assert!(serde_json::from_str::<SshProfileOverrides>(overrides).is_err());
+    }
+
+    #[test]
+    fn host_trust_decisions_have_stable_wire_names() {
+        assert_eq!(
+            serde_json::to_string(&HostTrustDecision::Reject).unwrap(),
+            "\"reject\""
+        );
+        assert_eq!(
+            serde_json::to_string(&HostTrustDecision::TrustOnce).unwrap(),
+            "\"trustOnce\""
+        );
+        assert_eq!(
+            serde_json::to_string(&HostTrustDecision::TrustAndSave).unwrap(),
+            "\"trustAndSave\""
+        );
     }
 
     #[test]

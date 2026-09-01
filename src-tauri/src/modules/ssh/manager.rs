@@ -11,15 +11,14 @@ use crate::modules::ssh::auth::{
 };
 use crate::modules::ssh::channel::{discover_remote_home, RemotePty};
 use crate::modules::ssh::errors::{SshError, SshErrorCode};
-use crate::modules::ssh::known_hosts::host_fingerprint;
+use crate::modules::ssh::known_hosts::{host_fingerprint, save_host_key, KnownHostEntry};
+use crate::modules::ssh::limits::MAX_CHANNELS_PER_SPACE;
 use crate::modules::ssh::transport::{AuthenticatedTransport, HostTrustBridge};
 use crate::modules::ssh::types::{
     AuthChallenge, AuthChallengeKind, AuthResponse, ChallengeId, ChannelId, ChannelPhase,
-    ConnectionId, ConnectionPhase, PresentedHostKey, PtyEvent, PtySize, SshChallenge,
-    SshConnectRequest, SshConnectionEvent,
+    ConnectionId, ConnectionPhase, HostTrustDecision, PresentedHostKey, PtyEvent, PtySize,
+    SshChallenge, SshConnectRequest, SshConnectionEvent,
 };
-
-const MAX_PTY_CHANNELS: usize = 32;
 
 pub type SshEventSink = mpsc::Sender<SshConnectionEvent>;
 
@@ -57,6 +56,7 @@ pub struct SpaceConnection {
 struct ConnectAttempt {
     space_id: String,
     commands: mpsc::Sender<AttemptCommand>,
+    pending_trust: Arc<Mutex<Option<ChallengeId>>>,
     cancel: CancellationToken,
 }
 
@@ -68,7 +68,7 @@ enum AttemptCommand {
     },
     Trust {
         challenge_id: ChallengeId,
-        trusted: bool,
+        decision: HostTrustDecision,
         reply: oneshot::Sender<Result<(), SshError>>,
     },
     Cancel,
@@ -109,11 +109,13 @@ impl SshState {
         let connection_id = self.allocate_connection_id()?;
         let cancel = self.shutdown.child_token();
         let (commands, command_rx) = mpsc::channel(1);
+        let pending_trust = Arc::new(Mutex::new(None));
         self.attempts.write().await.insert(
             connection_id,
             ConnectAttempt {
                 space_id: request.space_id.clone(),
                 commands,
+                pending_trust: pending_trust.clone(),
                 cancel: cancel.clone(),
             },
         );
@@ -121,7 +123,14 @@ impl SshState {
         tokio::spawn(async move {
             let space_id = request.space_id.clone();
             if let Err(error) = state
-                .run_connect(connection_id, request, events.clone(), command_rx, cancel)
+                .run_connect(
+                    connection_id,
+                    request,
+                    events.clone(),
+                    command_rx,
+                    pending_trust,
+                    cancel,
+                )
                 .await
             {
                 let _ = emit_event(
@@ -172,20 +181,23 @@ impl SshState {
         &self,
         connection_id: ConnectionId,
         challenge_id: ChallengeId,
-        trusted: bool,
+        decision: HostTrustDecision,
     ) -> Result<(), SshError> {
-        let commands = self
+        let (commands, pending_trust) = self
             .attempts
             .read()
             .await
             .get(&connection_id)
-            .map(|attempt| attempt.commands.clone())
+            .map(|attempt| (attempt.commands.clone(), attempt.pending_trust.clone()))
             .ok_or_else(|| missing_connection(connection_id))?;
+        if *pending_trust.lock().await != Some(challenge_id) {
+            return Err(challenge_cancelled(connection_id));
+        }
         let (reply, result) = oneshot::channel();
         commands
             .send(AttemptCommand::Trust {
                 challenge_id,
-                trusted,
+                decision,
                 reply,
             })
             .await
@@ -211,6 +223,17 @@ impl SshState {
         let connection_id = self.start_connect(request, events).await?;
         while let Some(event) = event_rx.recv().await {
             match event {
+                SshConnectionEvent::Challenge {
+                    challenge: SshChallenge::UnknownHost { host, .. },
+                } => {
+                    self.cancel_connect(connection_id).await?;
+                    return Err(SshError::new(
+                        SshErrorCode::HostUnknown,
+                        "verifying host key",
+                        host,
+                        "host key requires explicit trust",
+                    ));
+                }
                 SshConnectionEvent::Challenge {
                     challenge: SshChallenge::Password { challenge_id, .. },
                 } => {
@@ -248,6 +271,7 @@ impl SshState {
         request: SshConnectRequest,
         events: SshEventSink,
         mut commands: mpsc::Receiver<AttemptCommand>,
+        pending_trust: Arc<Mutex<Option<ChallengeId>>>,
         cancel: CancellationToken,
     ) -> Result<(), SshError> {
         emit_phase(
@@ -258,13 +282,12 @@ impl SshState {
         )?;
         let (presented_tx, mut presented_rx) = mpsc::channel(1);
         let (decision_tx, decision_rx) = mpsc::channel(1);
-        let trust_bridge = (!request.trust_unknown_host).then_some(HostTrustBridge {
+        let trust_bridge = HostTrustBridge {
             presented: presented_tx,
             decisions: Arc::new(Mutex::new(decision_rx)),
-        });
+        };
         let connect = AuthenticatedTransport::connect_unauthenticated(
             &request.config,
-            request.trust_unknown_host,
             request.proxy_command_approved,
             trust_bridge,
         );
@@ -274,9 +297,10 @@ impl SshState {
             tokio::select! {
                 result = &mut connect => break result?,
                 () = cancel.cancelled() => return Err(challenge_cancelled(connection_id)),
-                presented = presented_rx.recv(), if !request.trust_unknown_host && !trust_prompted => {
+                presented = presented_rx.recv(), if !trust_prompted => {
                     let presented = presented.ok_or_else(|| challenge_cancelled(connection_id))?;
                     trust_prompted = true;
+                    pending_trust.lock().await.replace(0);
                     emit_host_challenge(
                         &events,
                         connection_id,
@@ -287,15 +311,22 @@ impl SshState {
                         () = cancel.cancelled() => return Err(challenge_cancelled(connection_id)),
                         command = commands.recv() => command.ok_or_else(|| challenge_cancelled(connection_id))?,
                     };
+                    pending_trust.lock().await.take();
                     match command {
-                        AttemptCommand::Trust { challenge_id: 0, trusted, reply } => {
-                            decision_tx.send(trusted).await.map_err(|_| challenge_cancelled(connection_id))?;
+                        AttemptCommand::Trust { challenge_id: 0, decision, reply } => {
+                            let result = apply_host_trust_decision(&request, &presented, decision).await;
+                            if let Err(error) = &result {
+                                let _ = decision_tx.send(HostTrustDecision::Reject).await;
+                                let _ = reply.send(Err(error.clone()));
+                                return Err(error.clone());
+                            }
+                            decision_tx.send(decision).await.map_err(|_| challenge_cancelled(connection_id))?;
                             let _ = reply.send(Ok(()));
                         }
                         AttemptCommand::Trust { reply, .. } | AttemptCommand::Respond { reply, .. } => {
                             let error = challenge_cancelled(connection_id);
                             let _ = reply.send(Err(error.clone()));
-                            let _ = decision_tx.send(false).await;
+                            let _ = decision_tx.send(HostTrustDecision::Reject).await;
                             return Err(error);
                         }
                         AttemptCommand::Cancel => return Err(challenge_cancelled(connection_id)),
@@ -337,8 +368,22 @@ impl SshState {
         let cancellation_connection = connection.clone();
         let cancellation = connection.cancel.clone();
         tokio::spawn(async move {
-            cancellation.cancelled().await;
-            cancellation_connection.transport.disconnect().await;
+            loop {
+                tokio::select! {
+                    () = cancellation.cancelled() => {
+                        cancellation_connection.transport.disconnect().await;
+                        return;
+                    }
+                    () = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                        if cancellation_connection.transport.is_closed() {
+                            cancellation_connection
+                                .phase
+                                .send_replace(ConnectionPhase::Lost);
+                            return;
+                        }
+                    }
+                }
+            }
         });
         self.connections
             .write()
@@ -392,7 +437,7 @@ impl SshState {
             return Err(transport_lost("connection is not ready"));
         }
         let mut channels = connection.channels.write().await;
-        if channels.len() >= MAX_PTY_CHANNELS {
+        if channels.len() >= MAX_CHANNELS_PER_SPACE {
             return Err(SshError::new(
                 SshErrorCode::ChannelLimitReached,
                 "opening PTY channel",
@@ -485,11 +530,7 @@ impl SshState {
     ) -> Option<ChannelPhase> {
         let connection = self.connection(connection_id).await.ok()?;
         let channel = connection.channels.read().await.get(&channel_id).cloned()?;
-        let phase = channel.phase();
-        if phase == ChannelPhase::Lost {
-            connection.phase.send_replace(ConnectionPhase::Lost);
-        }
-        Some(phase)
+        Some(channel.phase())
     }
 
     pub async fn connection_count(&self) -> usize {
@@ -633,6 +674,41 @@ async fn drive_authentication<B: AuthenticationBackend>(
             }
         }
     }
+}
+
+async fn apply_host_trust_decision(
+    request: &SshConnectRequest,
+    presented: &PresentedHostKey,
+    decision: HostTrustDecision,
+) -> Result<(), SshError> {
+    if decision != HostTrustDecision::TrustAndSave {
+        return Ok(());
+    }
+    let path = request.config.known_hosts_files.first().ok_or_else(|| {
+        SshError::new(
+            SshErrorCode::KnownHostsReadFailed,
+            "saving host key",
+            &request.config.host,
+            "no writable known_hosts file is configured",
+        )
+    })?;
+    save_host_key(
+        std::path::Path::new(path),
+        KnownHostEntry {
+            host: request.config.host.clone(),
+            port: request.config.port,
+            key: presented.clone(),
+        },
+    )
+    .await
+    .map_err(|error| {
+        SshError::new(
+            SshErrorCode::KnownHostsReadFailed,
+            "saving host key",
+            &request.config.host,
+            error.to_string(),
+        )
+    })
 }
 
 fn emit_host_challenge(
@@ -1021,6 +1097,19 @@ mod tests {
                 break;
             }
         }
+        assert_eq!(state.phase(connection).await, Some(ConnectionPhase::Ready));
+        let replacement = state
+            .open_pty(connection, PtySize::new(100, 40))
+            .await
+            .unwrap();
+        assert_eq!(
+            state.channel_phase(connection, replacement).await,
+            Some(ChannelPhase::Live)
+        );
+        assert_eq!(
+            state.discover_remote_home(connection).await.unwrap(),
+            Some("/home/user".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -1053,29 +1142,51 @@ mod tests {
             Some(ChannelPhase::Lost)
         );
         assert_eq!(state.channel_count(connection).await, 1);
+        assert_eq!(state.phase(connection).await, Some(ConnectionPhase::Lost));
         assert_eq!(server.shell_open_count(), 1);
     }
 
     #[tokio::test]
-    async fn unknown_host_requires_explicit_trust() {
+    async fn unknown_host_rejection_is_correlated_and_fail_closed() {
         let server = TestSshServer::password("user", "secret").await;
         let state = SshState::default();
-        let mut request = server.connect_request("space-a");
-        request.trust_unknown_host = false;
+        let request = server.unknown_connect_request("space-reject");
+        let expected_host = request.config.host.clone();
+        let expected_port = request.config.port;
         let (events, mut event_rx) = mpsc::channel(16);
         let connection = state.start_connect(request, events).await.unwrap();
-        loop {
+        let challenge_id = loop {
             if let SshConnectionEvent::Challenge {
-                challenge: SshChallenge::UnknownHost { challenge_id, .. },
+                challenge:
+                    SshChallenge::UnknownHost {
+                        challenge_id,
+                        host,
+                        port,
+                        algorithm,
+                        fingerprint,
+                        ..
+                    },
             } = event_rx.recv().await.unwrap()
             {
-                state
-                    .respond_trust(connection, challenge_id, false)
-                    .await
-                    .unwrap();
-                break;
+                assert_eq!(host, expected_host);
+                assert_eq!(port, expected_port);
+                assert_eq!(algorithm, "ssh-ed25519");
+                assert!(fingerprint.starts_with("SHA256:"));
+                break challenge_id;
             }
-        }
+        };
+        assert_eq!(
+            state
+                .respond_trust(connection, challenge_id + 1, HostTrustDecision::TrustOnce)
+                .await
+                .unwrap_err()
+                .code,
+            SshErrorCode::ChallengeCancelled
+        );
+        state
+            .respond_trust(connection, challenge_id, HostTrustDecision::Reject)
+            .await
+            .unwrap();
         loop {
             if let SshConnectionEvent::Error { error, .. } = event_rx.recv().await.unwrap() {
                 assert_eq!(error.code, SshErrorCode::HostUnknown);
@@ -1085,12 +1196,62 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn explicit_host_trust_allows_authentication_to_continue() {
+    async fn trust_once_does_not_persist_and_prompts_again() {
         let server = TestSshServer::password("user", "secret").await;
         let state = SshState::default();
-        let mut request = server.connect_request("space-trust");
-        request.trust_unknown_host = false;
+        let mut request = server.unknown_connect_request("space-once");
+        let known_hosts_file = request.config.known_hosts_files[0].clone();
         request.password = None;
+        let connection =
+            connect_after_trust(&state, request, HostTrustDecision::TrustOnce, "secret").await;
+        assert!(!std::path::Path::new(&known_hosts_file).exists());
+        state.disconnect_space(connection).await.unwrap();
+
+        let mut request = server.unknown_connect_request("space-once-again");
+        request.config.known_hosts_files = vec![known_hosts_file];
+        let (events, mut event_rx) = mpsc::channel(16);
+        let connection = state.start_connect(request, events).await.unwrap();
+        loop {
+            if matches!(
+                event_rx.recv().await.unwrap(),
+                SshConnectionEvent::Challenge {
+                    challenge: SshChallenge::UnknownHost { .. }
+                }
+            ) {
+                break;
+            }
+        }
+        state.cancel_connect(connection).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn trust_and_save_persists_and_rechecks_without_prompting() {
+        let server = TestSshServer::password("user", "secret").await;
+        let state = SshState::default();
+        let mut request = server.unknown_connect_request("space-save");
+        let known_hosts_file = request.config.known_hosts_files[0].clone();
+        request.password = None;
+        let connection =
+            connect_after_trust(&state, request, HostTrustDecision::TrustAndSave, "secret").await;
+        assert!(std::path::Path::new(&known_hosts_file).exists());
+        state.disconnect_space(connection).await.unwrap();
+
+        let mut request = server.connect_request("space-save-again");
+        request.config.known_hosts_files = vec![known_hosts_file];
+        let connection =
+            tokio::time::timeout(std::time::Duration::from_secs(2), state.connect(request))
+                .await
+                .expect("saved host key should not prompt")
+                .unwrap();
+        assert_eq!(state.phase(connection).await, Some(ConnectionPhase::Ready));
+    }
+
+    async fn connect_after_trust(
+        state: &SshState,
+        request: SshConnectRequest,
+        decision: HostTrustDecision,
+        password: &str,
+    ) -> ConnectionId {
         let (events, mut event_rx) = mpsc::channel(16);
         let connection = state.start_connect(request, events).await.unwrap();
         loop {
@@ -1098,7 +1259,7 @@ mod tests {
                 SshConnectionEvent::Challenge {
                     challenge: SshChallenge::UnknownHost { challenge_id, .. },
                 } => state
-                    .respond_trust(connection, challenge_id, true)
+                    .respond_trust(connection, challenge_id, decision)
                     .await
                     .unwrap(),
                 SshConnectionEvent::Challenge {
@@ -1109,17 +1270,17 @@ mod tests {
                         challenge_id,
                         AuthResponse {
                             challenge_id,
-                            answers: vec![crate::modules::ssh::AuthAnswer::new("secret")],
+                            answers: vec![crate::modules::ssh::AuthAnswer::new(password)],
                             remember: false,
                         },
                     )
                     .await
                     .unwrap(),
-                SshConnectionEvent::Ready { .. } => break,
+                SshConnectionEvent::Ready { .. } => return connection,
+                SshConnectionEvent::Error { error, .. } => panic!("connect failed: {error}"),
                 _ => {}
             }
         }
-        assert_eq!(state.phase(connection).await, Some(ConnectionPhase::Ready));
     }
 
     #[tokio::test]

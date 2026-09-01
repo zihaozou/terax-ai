@@ -25,7 +25,7 @@ pub use manager::{SpaceConnection, SshEventSink, SshState};
 pub use types::{
     AddKeysToAgent, AuthAnswer, AuthChallenge, AuthChallengeKind, AuthMethod, AuthResponse,
     ChallengeId, ChannelId, ChannelPhase, ConnectionId, ConnectionPhase, HostKeyDecision,
-    PresentedHostKey, PtyEvent, PtySize, ResolvedSshConfig, SshChallenge, SshConfigWarning,
-    SshConnectRequest, SshConnectionEvent, SshProfileInput, SshProfileOverrides, SshProfileSource,
-    SshPrompt,
+    HostTrustDecision, PresentedHostKey, PtyEvent, PtySize, ResolvedSshConfig, SshChallenge,
+    SshConfigWarning, SshConnectRequest, SshConnectionEvent, SshProfileInput, SshProfileOverrides,
+    SshProfileSource, SshPrompt,
 };
