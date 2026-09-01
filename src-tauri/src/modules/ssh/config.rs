@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
-    fs, io,
+    fs,
+    io::{self, Read},
     path::{Path, PathBuf},
 };
 
@@ -10,8 +11,8 @@ use sha2::{Digest, Sha256};
 
 use super::{
     limits::{MAX_CONFIG_FILE_BYTES, MAX_INCLUDE_DEPTH, MAX_INCLUDE_FILES},
-    AuthMethod, ResolvedSshConfig, SshConfigWarning, SshError, SshErrorCode, SshProfileInput,
-    SshProfileSource,
+    AddKeysToAgent, AuthMethod, ResolvedSshConfig, SshConfigWarning, SshError, SshErrorCode,
+    SshProfileInput, SshProfileSource,
 };
 
 pub trait ConfigFiles: Send + Sync {
@@ -46,7 +47,10 @@ impl ConfigFiles for OsConfigFiles {
     }
 
     fn read_limited(&self, path: &Path, max_bytes: usize) -> io::Result<String> {
-        let bytes = fs::read(path)?;
+        let file = fs::File::open(path)?;
+        let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024));
+        file.take(max_bytes.saturating_add(1) as u64)
+            .read_to_end(&mut bytes)?;
         if bytes.len() > max_bytes {
             return Err(io::Error::new(
                 io::ErrorKind::FileTooLarge,
@@ -70,7 +74,12 @@ impl ConfigFiles for OsConfigFiles {
         let matcher = Glob::new(file_pattern)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?
             .compile_matcher();
-        let mut paths = fs::read_dir(parent)?.try_fold(Vec::new(), |mut paths, entry| {
+        let mut entries = match fs::read_dir(parent) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let mut paths = entries.try_fold(Vec::new(), |mut paths, entry| {
             let path = entry?.path();
             if matcher.is_match(path.file_name().unwrap_or_default()) {
                 paths.push(path);
@@ -113,7 +122,13 @@ pub fn classify_directive(directive: &str) -> DirectiveSupport {
         | "certificatefile"
         | "identitiesonly"
         | "preferredauthentications"
-        | "securitykeyprovider" => DirectiveSupport::Blocking("connection-critical-directive"),
+        | "securitykeyprovider"
+        | "authenticationmethods"
+        | "passwordauthentication"
+        | "pubkeyauthentication"
+        | "kbdinteractiveauthentication" => {
+            DirectiveSupport::Blocking("connection-critical-directive")
+        }
         _ => DirectiveSupport::Warning("unsupported-directive"),
     }
 }
@@ -129,6 +144,31 @@ pub fn proxy_consent_hash(profile_id: &str, target: &str, command: &str) -> Stri
         "sha256:{}",
         BASE64_STANDARD_NO_PAD.encode(hasher.finalize())
     )
+}
+
+fn expand_proxy_command(command: &str, target: &str, host: &str, port: u16, user: &str) -> String {
+    let port = port.to_string();
+    let mut expanded = String::with_capacity(command.len());
+    let mut chars = command.chars();
+    while let Some(character) = chars.next() {
+        if character != '%' {
+            expanded.push(character);
+            continue;
+        }
+        match chars.next() {
+            Some('%') => expanded.push('%'),
+            Some('h' | 'H') => expanded.push_str(host),
+            Some('n') => expanded.push_str(target),
+            Some('p') => expanded.push_str(&port),
+            Some('r' | 'u') => expanded.push_str(user),
+            Some(token) => {
+                expanded.push('%');
+                expanded.push(token);
+            }
+            None => expanded.push('%'),
+        }
+    }
+    expanded
 }
 
 pub fn resolve_profile(
@@ -214,11 +254,21 @@ fn resolve_text_for_profile(
     let user = overrides
         .and_then(|value| value.user.clone())
         .unwrap_or_else(|| parsed.user());
-    let proxy_command = parsed.host_config.proxy_command.clone();
+    let proxy_command = parsed
+        .host_config
+        .proxy_command
+        .as_deref()
+        .map(|command| expand_proxy_command(command, target, &host, port, &user));
     let proxy_jump = parsed.host_config.proxy_jump.clone();
     let proxy_consent_hash = proxy_command
         .as_deref()
         .map(|command| proxy_consent_hash(&profile.id, &host, command));
+    let add_keys_to_agent = match parsed.host_config.add_keys_to_agent {
+        Some(russh_config::AddKeysToAgent::Yes) => AddKeysToAgent::Yes,
+        Some(russh_config::AddKeysToAgent::Confirm) => AddKeysToAgent::Confirm,
+        Some(russh_config::AddKeysToAgent::Ask) => AddKeysToAgent::Ask,
+        Some(russh_config::AddKeysToAgent::No) | None => AddKeysToAgent::No,
+    };
     let mut warnings = warnings_for(text, target);
     if strict_host_checking_is_weakened(text, target) {
         warnings.push(SshConfigWarning {
@@ -242,8 +292,9 @@ fn resolve_text_for_profile(
         auth_order: overrides
             .and_then(|value| value.auth_order.clone())
             .unwrap_or_else(default_auth_order),
-        proxy_command: proxy_command.clone(),
+        proxy_command,
         proxy_jump,
+        add_keys_to_agent,
         known_hosts_files,
         warnings,
         proxy_consent_hash,
@@ -273,12 +324,14 @@ fn load_openssh_config(
         ));
     }
     let mut text = String::new();
+    let mut applies = true;
     match context.files.canonicalize(&user_config) {
         Ok(_) => text.push_str(&load_file(
             &user_config,
             context,
             &roots,
             &mut state,
+            &mut applies,
             0,
             profile_target,
         )?),
@@ -286,11 +339,13 @@ fn load_openssh_config(
         Err(error) => return Err(config_error_for_target(profile_target, error.to_string())),
     }
     if let Some(system_config) = context.system_config {
+        applies = true;
         text.push_str(&load_file(
             system_config,
             context,
             &roots,
             &mut state,
+            &mut applies,
             0,
             profile_target,
         )?);
@@ -309,6 +364,7 @@ fn load_file(
     context: &ResolveContext<'_>,
     roots: &[PathBuf],
     state: &mut LoadState,
+    applies: &mut bool,
     depth: usize,
     target: &str,
 ) -> Result<String, SshError> {
@@ -353,9 +409,18 @@ fn load_file(
             resolved.push('\n');
             continue;
         };
+        if directive.eq_ignore_ascii_case("Host") {
+            *applies = host_patterns_match(value, target);
+            resolved.push_str(line);
+            resolved.push('\n');
+            continue;
+        }
         if !directive.eq_ignore_ascii_case("Include") {
             resolved.push_str(line);
             resolved.push('\n');
+            continue;
+        }
+        if !*applies {
             continue;
         }
         for include in include_patterns(value, canonical.parent(), context.home) {
@@ -364,7 +429,15 @@ fn load_file(
                 .expand_glob(&include)
                 .map_err(|error| config_error_for_target(target, error.to_string()))?;
             for path in paths {
-                resolved.push_str(&load_file(&path, context, roots, state, depth + 1, target)?);
+                resolved.push_str(&load_file(
+                    &path,
+                    context,
+                    roots,
+                    state,
+                    applies,
+                    depth + 1,
+                    target,
+                )?);
             }
         }
     }
@@ -524,6 +597,8 @@ fn config_error_for_target(target: &str, message: impl Into<String>) -> SshError
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use tempfile::TempDir;
 
     use super::*;
@@ -543,6 +618,44 @@ mod tests {
         std::fs::write(ssh.join("cycle-a"), "Include cycle-b\n").expect("include must be written");
         std::fs::write(ssh.join("cycle-b"), "Include cycle-a\n").expect("include must be written");
         home
+    }
+
+    #[derive(Default)]
+    struct FixtureFiles {
+        files: HashMap<PathBuf, String>,
+        globs: HashMap<PathBuf, Vec<PathBuf>>,
+    }
+
+    impl ConfigFiles for FixtureFiles {
+        fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+            Ok(path.to_path_buf())
+        }
+
+        fn read_limited(&self, path: &Path, max_bytes: usize) -> io::Result<String> {
+            let contents = self
+                .files
+                .get(path)
+                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+            if contents.len() > max_bytes {
+                return Err(io::Error::new(
+                    io::ErrorKind::FileTooLarge,
+                    "config file exceeds limit",
+                ));
+            }
+            Ok(contents.clone())
+        }
+
+        fn expand_glob(&self, pattern: &Path) -> io::Result<Vec<PathBuf>> {
+            if let Some(paths) = self.globs.get(pattern) {
+                return Ok(paths.clone());
+            }
+            Ok(self
+                .files
+                .contains_key(pattern)
+                .then(|| pattern.to_path_buf())
+                .into_iter()
+                .collect())
+        }
     }
 
     fn openssh_profile(alias: &str) -> SshProfileInput {
@@ -591,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn include_cycles_and_limits_are_rejected() {
+    fn include_cycles_are_rejected() {
         let home = cyclic_include_fixture();
         let err = resolve_profile(
             &openssh_profile("prod"),
@@ -599,6 +712,85 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, SshErrorCode::ConfigUnsupported);
+    }
+
+    #[test]
+    fn include_limits_and_approved_roots_are_rejected() {
+        let home = Path::new("/home/test");
+        let config = home.join(".ssh/config");
+        let mut cases = Vec::new();
+
+        let mut depth_files = FixtureFiles::default();
+        for depth in 0..=MAX_INCLUDE_DEPTH {
+            let path = if depth == 0 {
+                config.clone()
+            } else {
+                home.join(format!(".ssh/depth-{depth}"))
+            };
+            let next = home.join(format!(".ssh/depth-{}", depth + 1));
+            depth_files
+                .files
+                .insert(path, format!("Include {}\n", next.display()));
+        }
+        cases.push(("depth", depth_files, "depth exceeds"));
+
+        let mut count_files = FixtureFiles::default();
+        count_files.files.insert(
+            config.clone(),
+            "Include /home/test/.ssh/parts/*\n".to_owned(),
+        );
+        let included = (0..MAX_INCLUDE_FILES)
+            .map(|index| home.join(format!(".ssh/parts/{index}")))
+            .collect::<Vec<_>>();
+        for path in &included {
+            count_files
+                .files
+                .insert(path.clone(), "Host prod\n".to_owned());
+        }
+        count_files
+            .globs
+            .insert(home.join(".ssh/parts/*"), included);
+        cases.push(("file count", count_files, "file count exceeds"));
+
+        let mut size_files = FixtureFiles::default();
+        size_files.files.insert(
+            config.clone(),
+            "x".repeat(MAX_CONFIG_FILE_BYTES.saturating_add(1)),
+        );
+        cases.push(("file size", size_files, "config file exceeds limit"));
+
+        let mut escape_files = FixtureFiles::default();
+        escape_files
+            .files
+            .insert(config, "Include /outside/config\n".to_owned());
+        escape_files
+            .files
+            .insert(PathBuf::from("/outside/config"), "Host prod\n".to_owned());
+        cases.push(("approved root", escape_files, "escapes approved"));
+
+        for (name, files, expected) in cases {
+            let context = ResolveContext {
+                home,
+                system_config: None,
+                files: &files,
+            };
+            let error = resolve_profile(&openssh_profile("prod"), &context)
+                .expect_err("limit fixture must be rejected");
+            assert!(
+                error.message.contains(expected),
+                "{name} returned unexpected error: {}",
+                error.message
+            );
+        }
+    }
+
+    #[test]
+    fn os_reader_rejects_oversized_files_with_a_bounded_read() {
+        let home = fixture_home(&"x".repeat(MAX_CONFIG_FILE_BYTES.saturating_add(1)));
+        let error = OS_CONFIG_FILES
+            .read_limited(&home.path().join(".ssh/config"), MAX_CONFIG_FILE_BYTES)
+            .expect_err("oversized file must be rejected");
+        assert_eq!(error.kind(), io::ErrorKind::FileTooLarge);
     }
 
     #[test]
@@ -611,15 +803,55 @@ mod tests {
     }
 
     #[test]
-    fn proxy_consent_hash_changes_with_effective_command() {
+    fn proxy_consent_hash_changes_with_effective_host_port_and_user() {
+        let text = "Host prod\n ProxyCommand connect %h %p %u %r\n";
+        let resolve_with = |host: &str, port: u16, user: &str| {
+            let mut profile = openssh_profile("prod");
+            profile.overrides = Some(SshProfileOverrides {
+                host: Some(host.to_owned()),
+                port: Some(port),
+                user: Some(user.to_owned()),
+                ..Default::default()
+            });
+            resolve_text_for_profile(text, "prod", &profile, Path::new(""))
+                .expect("proxy profile must resolve")
+        };
+        let base = resolve_with("host-a", 22, "alice");
+        let changed_host = resolve_with("host-b", 22, "alice");
+        let changed_port = resolve_with("host-a", 2202, "alice");
+        let changed_user = resolve_with("host-a", 22, "bob");
+
         assert_eq!(
-            proxy_consent_hash("profile", "host", "nc %h %p"),
-            "sha256:yEOtNcu+WEB3JglgcPPUiwviFr1mYwI1YWQ9NgdAIg4"
+            base.proxy_command.as_deref(),
+            Some("connect host-a 22 alice alice")
         );
-        assert_ne!(
-            proxy_consent_hash("profile", "host", "nc %h %p"),
-            proxy_consent_hash("profile", "host", "nc -x proxy %h %p")
+        assert_ne!(base.proxy_consent_hash, changed_host.proxy_consent_hash);
+        assert_ne!(base.proxy_consent_hash, changed_port.proxy_consent_hash);
+        assert_ne!(base.proxy_consent_hash, changed_user.proxy_consent_hash);
+    }
+
+    #[test]
+    fn include_under_nonmatching_host_is_not_loaded() {
+        let home = fixture_home(
+            "Host unrelated\n Include /outside/missing\nHost prod\n HostName prod.example\n",
         );
+        let out = resolve_profile(
+            &openssh_profile("prod"),
+            &ResolveContext::for_home(home.path()),
+        )
+        .expect("irrelevant include must not affect resolution");
+        assert_eq!(out.host, "prod.example");
+    }
+
+    #[test]
+    fn missing_include_glob_directory_matches_no_files() {
+        let home = fixture_home("Include missing/*.conf\nHost prod\n HostName prod.example\n");
+        let out = resolve_profile(
+            &openssh_profile("prod"),
+            &ResolveContext::for_home(home.path()),
+        )
+        .expect("missing optional include directory must be ignored");
+        assert_eq!(out.host, "prod.example");
     }
 
     #[test]
@@ -643,15 +875,40 @@ mod tests {
     }
 
     #[test]
+    fn add_keys_to_agent_is_preserved_in_resolved_config() {
+        for (value, expected) in [
+            ("yes", AddKeysToAgent::Yes),
+            ("confirm", AddKeysToAgent::Confirm),
+            ("ask", AddKeysToAgent::Ask),
+            ("no", AddKeysToAgent::No),
+        ] {
+            let out = resolve_text(&format!("Host prod\n AddKeysToAgent {value}\n"), "prod")
+                .expect("AddKeysToAgent must resolve");
+            assert_eq!(out.add_keys_to_agent, expected);
+        }
+    }
+
+    #[test]
     fn directive_classification_distinguishes_safe_and_blocking_settings() {
         assert_eq!(classify_directive("HostName"), DirectiveSupport::Supported);
         assert!(matches!(
             classify_directive("Compression"),
             DirectiveSupport::Warning(_)
         ));
-        assert!(matches!(
-            classify_directive("Ciphers"),
-            DirectiveSupport::Blocking(_)
-        ));
+        for directive in [
+            "Ciphers",
+            "AuthenticationMethods",
+            "PasswordAuthentication",
+            "PubkeyAuthentication",
+            "KbdInteractiveAuthentication",
+        ] {
+            assert!(
+                matches!(classify_directive(directive), DirectiveSupport::Blocking(_)),
+                "{directive} must block resolution"
+            );
+        }
+        let error = resolve_text("Host prod\n PasswordAuthentication no\n", "prod")
+            .expect_err("connection-critical authentication policy must block resolution");
+        assert_eq!(error.code, SshErrorCode::ConfigUnsupported);
     }
 }

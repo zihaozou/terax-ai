@@ -45,6 +45,16 @@ pub struct SshProfileOverrides {
     pub known_hosts_file: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AddKeysToAgent {
+    Yes,
+    Confirm,
+    Ask,
+    #[default]
+    No,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedSshConfig {
@@ -56,6 +66,7 @@ pub struct ResolvedSshConfig {
     pub auth_order: Vec<AuthMethod>,
     pub proxy_command: Option<String>,
     pub proxy_jump: Option<String>,
+    pub add_keys_to_agent: AddKeysToAgent,
     pub known_hosts_files: Vec<String>,
     pub warnings: Vec<SshConfigWarning>,
     pub proxy_consent_hash: Option<String>,
