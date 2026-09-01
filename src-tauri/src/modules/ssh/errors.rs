@@ -37,9 +37,15 @@ impl SshErrorCode {
     }
 }
 
-pub const fn retry_delays(code: SshErrorCode) -> [u64; 3] {
-    let _ = code;
-    [1, 2, 5]
+const NETWORK_RETRY_DELAYS: &[u64] = &[1, 2, 5];
+const NO_RETRY_DELAYS: &[u64] = &[];
+
+pub const fn retry_delays(code: SshErrorCode) -> &'static [u64] {
+    if code.is_retryable() {
+        NETWORK_RETRY_DELAYS
+    } else {
+        NO_RETRY_DELAYS
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Error, Serialize, PartialEq, Eq)]
@@ -78,6 +84,8 @@ mod tests {
     fn auth_and_host_key_errors_do_not_retry() {
         assert!(!SshErrorCode::AuthenticationRejected.is_retryable());
         assert!(!SshErrorCode::HostKeyMismatch.is_retryable());
+        assert!(retry_delays(SshErrorCode::AuthenticationRejected).is_empty());
+        assert!(retry_delays(SshErrorCode::HostKeyMismatch).is_empty());
         assert_eq!(retry_delays(SshErrorCode::NetworkTimeout), [1, 2, 5]);
     }
 }

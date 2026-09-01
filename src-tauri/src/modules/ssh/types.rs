@@ -35,7 +35,7 @@ pub enum AuthMethod {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SshProfileOverrides {
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -43,7 +43,6 @@ pub struct SshProfileOverrides {
     pub identity_files: Option<Vec<String>>,
     pub auth_order: Option<Vec<AuthMethod>>,
     pub known_hosts_file: Option<String>,
-    pub strict_host_key_checking: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -58,7 +57,6 @@ pub struct ResolvedSshConfig {
     pub proxy_command: Option<String>,
     pub proxy_jump: Option<String>,
     pub known_hosts_files: Vec<String>,
-    pub strict_host_key_checking: bool,
     pub warnings: Vec<SshConfigWarning>,
     pub proxy_consent_hash: Option<String>,
 }
@@ -172,6 +170,13 @@ mod tests {
                 .expect("source must deserialize"),
             source
         );
+    }
+
+    #[test]
+    fn profile_overrides_reject_host_key_bypass() {
+        let overrides = r#"{"strictHostKeyChecking":false}"#;
+
+        assert!(serde_json::from_str::<SshProfileOverrides>(overrides).is_err());
     }
 
     #[test]
