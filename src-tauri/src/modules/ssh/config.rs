@@ -146,7 +146,13 @@ pub fn proxy_consent_hash(profile_id: &str, target: &str, command: &str) -> Stri
     )
 }
 
-fn expand_proxy_command(command: &str, target: &str, host: &str, port: u16, user: &str) -> String {
+fn expand_proxy_command(
+    command: &str,
+    target: &str,
+    host: &str,
+    port: u16,
+    user: &str,
+) -> Result<String, &'static str> {
     let port = port.to_string();
     let mut expanded = String::with_capacity(command.len());
     let mut chars = command.chars();
@@ -157,18 +163,14 @@ fn expand_proxy_command(command: &str, target: &str, host: &str, port: u16, user
         }
         match chars.next() {
             Some('%') => expanded.push('%'),
-            Some('h' | 'H') => expanded.push_str(host),
+            Some('h') => expanded.push_str(host),
             Some('n') => expanded.push_str(target),
             Some('p') => expanded.push_str(&port),
-            Some('r' | 'u') => expanded.push_str(user),
-            Some(token) => {
-                expanded.push('%');
-                expanded.push(token);
-            }
-            None => expanded.push('%'),
+            Some('r') => expanded.push_str(user),
+            Some(_) | None => return Err("ProxyCommand contains an unsupported token"),
         }
     }
-    expanded
+    Ok(expanded)
 }
 
 pub fn resolve_profile(
@@ -258,7 +260,11 @@ fn resolve_text_for_profile(
         .host_config
         .proxy_command
         .as_deref()
-        .map(|command| expand_proxy_command(command, target, &host, port, &user));
+        .map(|command| {
+            expand_proxy_command(command, target, &host, port, &user)
+                .map_err(|message| config_error(profile, message))
+        })
+        .transpose()?;
     let proxy_jump = parsed.host_config.proxy_jump.clone();
     let proxy_consent_hash = proxy_command
         .as_deref()
@@ -804,7 +810,7 @@ mod tests {
 
     #[test]
     fn proxy_consent_hash_changes_with_effective_host_port_and_user() {
-        let text = "Host prod\n ProxyCommand connect %h %p %u %r\n";
+        let text = "Host prod\n ProxyCommand connect %% %h %n %p %r\n";
         let resolve_with = |host: &str, port: u16, user: &str| {
             let mut profile = openssh_profile("prod");
             profile.overrides = Some(SshProfileOverrides {
@@ -823,7 +829,7 @@ mod tests {
 
         assert_eq!(
             base.proxy_command.as_deref(),
-            Some("connect host-a 22 alice alice")
+            Some("connect % host-a prod 22 alice")
         );
         assert_ne!(base.proxy_consent_hash, changed_host.proxy_consent_hash);
         assert_ne!(base.proxy_consent_hash, changed_port.proxy_consent_hash);
@@ -831,15 +837,37 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_proxy_command_tokens_are_rejected() {
+        for token in ["%H", "%u", "%x", "%"] {
+            let error = resolve_text(
+                &format!("Host prod\n ProxyCommand connect {token}\n"),
+                "prod",
+            )
+            .expect_err("unsupported ProxyCommand token must fail resolution");
+            assert_eq!(error.code, SshErrorCode::ConfigUnsupported);
+        }
+    }
+
+    #[test]
     fn include_under_nonmatching_host_is_not_loaded() {
-        let home = fixture_home(
-            "Host unrelated\n Include /outside/missing\nHost prod\n HostName prod.example\n",
-        );
+        let home = fixture_home("");
+        let outside = home.path().join("outside.conf");
+        std::fs::write(&outside, "Include ~/.ssh/config\n")
+            .expect("outside include must be written");
+        std::fs::write(
+            home.path().join(".ssh/config"),
+            format!(
+                "Host unrelated\n Include {}\nHost prod\n HostName prod.example\n",
+                outside.display()
+            ),
+        )
+        .expect("config must be written");
+
         let out = resolve_profile(
             &openssh_profile("prod"),
             &ResolveContext::for_home(home.path()),
         )
-        .expect("irrelevant include must not affect resolution");
+        .expect("irrelevant existing include must not affect resolution");
         assert_eq!(out.host, "prod.example");
     }
 
