@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
+use zeroize::Zeroize;
 
 pub type ConnectionId = u64;
 pub type ChannelId = u32;
@@ -119,6 +121,65 @@ pub enum ConnectionPhase {
 pub struct SshPrompt {
     pub text: String,
     pub echo: bool,
+}
+
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct AuthAnswer(String);
+
+impl AuthAnswer {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for AuthAnswer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AuthAnswer([REDACTED])")
+    }
+}
+
+impl Drop for AuthAnswer {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AuthChallengeKind {
+    Password {
+        prompt: String,
+    },
+    PrivateKeyPassphrase {
+        identity_file: String,
+        prompt: String,
+    },
+    KeyboardInteractive {
+        name: String,
+        instruction: String,
+        prompts: Vec<SshPrompt>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthChallenge {
+    pub connection_id: ConnectionId,
+    pub id: ChallengeId,
+    pub challenge: AuthChallengeKind,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthResponse {
+    pub challenge_id: ChallengeId,
+    pub answers: Vec<AuthAnswer>,
+    pub remember: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
